@@ -164,7 +164,6 @@ export const CSS = `
 .dbs-stage { position: relative; flex: none; }
 .dbs-canvas {
   position: relative; transform-origin: top left; background: #fff; overflow: hidden;
-  border-radius: 6px;
   box-shadow: 0 0 0 1px var(--dsw-alias-border-l1), 0 10px 28px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.12);
 }
 .dbs-frame { border: 8px solid #101012; border-radius: 26px; background: #101012;
@@ -186,7 +185,8 @@ export const CSS = `
 .dbs-status span { overflow: hidden; text-overflow: ellipsis; }
 .dbs-status .dbs-dot { opacity: .45; margin: 0 4px; }
 .dbs-start {
-  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 10px;
+  background: var(--dsw-alias-bg-layer-1);
   align-items: center; justify-content: center; padding: 28px; text-align: center;
   color: var(--dsw-alias-label-secondary); pointer-events: none;
 }

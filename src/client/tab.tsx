@@ -202,6 +202,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [iframeKey, setIframeKey] = React.useState(0)
   const [workspaceFallback, setWorkspaceFallback] = React.useState(false)
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [hostReady, setHostReady] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
@@ -215,6 +216,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null)
   const hostRef = React.useRef<HTMLDivElement | null>(null)
+  const setHostNode = React.useCallback((node: HTMLDivElement | null): void => {
+    hostRef.current = node
+    setHostReady(node !== null)
+  }, [])
   const webviewRef = React.useRef<GuestElement | null>(null)
   const readyRef = React.useRef(false)
   const pendingUrlRef = React.useRef('')
@@ -304,6 +309,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   // Guest lifecycle: one lease, one webview, events wired to React state.
   React.useLayoutEffect(() => {
     if (!isDesktop) return undefined
+    if (!hostReady) return undefined
     const host = hostRef.current
     if (host === null) return undefined
     if (effectiveWorkspaceKey === undefined) return undefined
@@ -474,7 +480,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       cancelled = true
       dispose()
     }
-  }, [isDesktop, effectiveWorkspaceKey, retry, sessionId, tabId, desktop, t])
+  }, [isDesktop, hostReady, effectiveWorkspaceKey, retry, sessionId, tabId, desktop, t])
 
   // Apply the user agent; reload only when it actually changes after first use.
   React.useEffect(() => {
@@ -872,22 +878,13 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
 
       {/* viewport */}
       <div className="dbs-viewport" ref={viewportRef} data-responsive={responsive}>
-        {showStart ? (
-          <div className="dbs-start">
-            <div className="dbs-startIcon">
-              <IconGlobe size={22} />
-            </div>
-            <b>{t('hint.start')}</b>
-            <small>{t('hint.startSub')}</small>
-          </div>
-        ) : (
         <div
           className={`dbs-stage${device.frame && frameAllowed && !responsive ? ' dbs-frame' : ''}`}
-          style={
-            responsive
+          style={{
+            ...(responsive
               ? { width: '100%', height: '100%' }
-              : { width: Math.max(1, size.w * scale) + frameBorder, height: Math.max(1, size.h * scale) + frameBorder }
-          }
+              : { width: Math.max(1, size.w * scale) + frameBorder, height: Math.max(1, size.h * scale) + frameBorder }),
+          }}
         >
           {device.frame && frameAllowed && !responsive && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
           <div
@@ -898,7 +895,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
                 : { width: size.w, height: size.h, transform: `scale(${scale})` }
             }
           >
-            {isDesktop ? <div ref={hostRef} style={{ width: '100%', height: '100%', display: 'flex' }} /> : null}
+            {isDesktop ? <div ref={setHostNode} className="dbs-guestHost" style={{ width: '100%', height: '100%', display: 'flex' }} /> : null}
             {!isDesktop && iframeUrl !== '' ? (
               <iframe
                 key={iframeKey}
@@ -911,7 +908,16 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             ) : null}
           </div>
         </div>
-        )}
+
+        {showStart ? (
+          <div className="dbs-start">
+            <div className="dbs-startIcon">
+              <IconGlobe size={22} />
+            </div>
+            <b>{t('hint.start')}</b>
+            <small>{t('hint.startSub')}</small>
+          </div>
+        ) : null}
 
         {guest === 'acquiring' ? <div className="dbs-loading">{t('guest.acquiring')}</div> : null}
         {loading ? <div className="dbs-loading">…</div> : null}

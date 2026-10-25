@@ -61,11 +61,13 @@
     "annotate"
   ],
   "devDependencies": {
+    "@testing-library/react": "^16.3.3",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.7",
     "bippy": "^0.7.3",
     "electron": "44.7.0",
     "esbuild": "^0.25.0",
+    "jsdom": "^30.1.3",
     "playwright-core": "^1.64.1",
     "react": "~18.3.1",
     "react-dom": "~18.3.1",
