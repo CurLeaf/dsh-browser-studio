@@ -7,8 +7,36 @@
  * while the chat bubble and the draft stay clean.
  */
 import { randomUUID } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 export const name = 'browser-studio'
+
+/** The web server must exist before apply, otherwise the route silently never mounts. */
+export const inject = ['webServer']
+
+const STATUS_PATH = join(homedir(), '.dsh', 'browser-studio-status.json')
+const status = {
+  appliedAt: null,
+  webServer: false,
+  route: false,
+  posts: 0,
+  steps: 0,
+  injections: 0,
+  lastPostAt: null,
+  lastInjectionAt: null,
+  lastError: null,
+}
+
+function flushStatus() {
+  try {
+    mkdirSync(dirname(STATUS_PATH), { recursive: true })
+    writeFileSync(STATUS_PATH, `${JSON.stringify(status, null, 2)}\n`)
+  } catch {
+    /* diagnostics must never break activation */
+  }
+}
 
 const ROUTE = '/browser-studio/api/refs'
 const SOURCE_KIND = 'browser-studio'
@@ -84,7 +112,11 @@ function sendJson(response, status, value) {
 }
 
 export function apply(ctx) {
+  try {
+  status.appliedAt = new Date().toISOString()
   const server = ctx.get('webServer')
+  status.webServer = server !== undefined && typeof server.register === 'function'
+  flushStatus()
   if (server !== undefined && typeof server.register === 'function') {
     ctx.effect(
       () =>
@@ -110,22 +142,32 @@ export function apply(ctx) {
             sweep()
             if (normalized.blocks.length === 0) pending.delete(normalized.sessionId)
             else pending.set(normalized.sessionId, { blocks: normalized.blocks, at: Date.now() })
+            status.posts += 1
+            status.lastPostAt = new Date().toISOString()
+            flushStatus()
             sendJson(response, 200, { ok: true, count: normalized.blocks.length })
           },
         }),
       'browser-studio: refs route',
     )
+    status.route = true
+    flushStatus()
   }
 
   ctx.on('agent/pre-step', async (payload, next) => {
     const decision = await next()
     if (decision?.kind !== 'enter') return decision
     try {
+      status.steps += 1
+      flushStatus()
       const sessionId = payload?.agent?.id
       if (typeof sessionId !== 'string') return decision
       const entry = pending.get(sessionId)
       if (entry === undefined || entry.blocks.length === 0) return decision
       pending.delete(sessionId)
+      status.injections += 1
+      status.lastInjectionAt = new Date().toISOString()
+      flushStatus()
       const message = {
         id: randomUUID(),
         role: 'user',
@@ -133,8 +175,16 @@ export function apply(ctx) {
         content: [{ type: 'text', text: buildContextText(entry.blocks) }],
       }
       return { ...decision, messages: [...decision.messages, message] }
-    } catch {
+    } catch (error) {
+      status.lastError = String(error?.message ?? error)
+      flushStatus()
       return decision
     }
   })
+  flushStatus()
+  } catch (error) {
+    status.lastError = String(error?.message ?? error)
+    flushStatus()
+    throw error
+  }
 }
