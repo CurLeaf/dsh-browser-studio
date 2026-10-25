@@ -2,4 +2,6 @@ node_modules/
 *.tgz
 test/fixture/react-app.js
 test/electron/spike.png
+test/preview/preview.js
+test/preview/shot-*.png
 .DS_Store

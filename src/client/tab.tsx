@@ -66,6 +66,111 @@ function workspaceKeyOf(snapshot: unknown, sessionId: string): string | undefine
   return match === undefined ? `session:${sessionId}` : `cwd:${String(match.path)}`
 }
 
+
+/* ------------------------------------------------------------------ icons */
+
+function Svg(props: { children: React.ReactNode; size?: number }): React.ReactElement {
+  return (
+    <svg
+      width={props.size ?? 16}
+      height={props.size ?? 16}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {props.children}
+    </svg>
+  )
+}
+
+const IconBack = (): React.ReactElement => (
+  <Svg><path d="M10 3.5 5.5 8 10 12.5" /></Svg>
+)
+const IconForward = (): React.ReactElement => (
+  <Svg><path d="M6 3.5 10.5 8 6 12.5" /></Svg>
+)
+const IconReload = (): React.ReactElement => (
+  <Svg><path d="M12.8 8a4.8 4.8 0 1 1-1.4-3.4" /><path d="M12.8 3.4V6h-2.6" /></Svg>
+)
+const IconExternal = (): React.ReactElement => (
+  <Svg><path d="M9 3h4v4" /><path d="M13 3 7.6 8.4" /><path d="M11 9.5V13H3V5h3.5" /></Svg>
+)
+const IconGlobe = (props: { size?: number }): React.ReactElement => (
+  <Svg size={props.size}>
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M2.5 8h11" />
+    <path d="M8 2.5c1.7 1.6 1.7 9.4 0 11" />
+    <path d="M8 2.5c-1.7 1.6-1.7 9.4 0 11" />
+  </Svg>
+)
+const IconChevron = (): React.ReactElement => (
+  <Svg size={12}><path d="M4 6.5 8 10 12 6.5" /></Svg>
+)
+const IconPick = (): React.ReactElement => (
+  <Svg>
+    <circle cx="8" cy="8" r="4.2" />
+    <path d="M8 1.4v2.9M8 11.7v2.9M1.4 8h2.9M11.7 8h2.9" />
+  </Svg>
+)
+const IconRotate = (): React.ReactElement => (
+  <Svg><path d="M12.6 8A4.6 4.6 0 1 1 11.2 4.8" /><path d="M12.6 2.9v2.5h-2.5" /></Svg>
+)
+const IconArrowRight = (): React.ReactElement => (
+  <Svg size={12}><path d="M3 8h9" /><path d="M8.5 4.5 12 8l-3.5 3.5" /></Svg>
+)
+const IconDevice = (props: { group?: string; size?: number }): React.ReactElement => {
+  const size = props.size ?? 15
+  if (props.group === 'laptop') {
+    return (
+      <Svg size={size}>
+        <rect x="3" y="3.5" width="10" height="7" rx="1.3" />
+        <path d="M1.8 12.2h12.4" />
+      </Svg>
+    )
+  }
+  if (props.group === 'desktop') {
+    return (
+      <Svg size={size}>
+        <rect x="1.8" y="2.8" width="12.4" height="8.2" rx="1.3" />
+        <path d="M8 11v2.2M5.6 13.2h4.8" />
+      </Svg>
+    )
+  }
+  if (props.group === 'tablet') {
+    return (
+      <Svg size={size}>
+        <rect x="3.2" y="1.6" width="9.6" height="12.8" rx="1.6" />
+        <path d="M7.2 12.6h1.6" />
+      </Svg>
+    )
+  }
+  return (
+    <Svg size={size}>
+      <rect x="4.4" y="1.6" width="7.2" height="12.8" rx="1.8" />
+      <path d="M7 12.5h2" />
+    </Svg>
+  )
+}
+
+function Switch(props: { on: boolean; disabled?: boolean; onChange: (next: boolean) => void; label: string }): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.on}
+      aria-label={props.label}
+      data-on={props.on}
+      disabled={props.disabled}
+      className="dbs-switch"
+      onClick={() => props.onChange(!props.on)}
+    />
+  )
+}
+
 export function BrowserBody(props: BodyProps): React.ReactElement {
   const { t, locale, sessionId, sendPrompt } = props
   const tab = typeof props.useTabInfo === 'function' ? props.useTabInfo().tab : undefined
@@ -96,6 +201,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [iframeUrl, setIframeUrl] = React.useState('')
   const [iframeKey, setIframeKey] = React.useState(0)
   const [workspaceFallback, setWorkspaceFallback] = React.useState(false)
+  const [menuOpen, setMenuOpen] = React.useState(false)
+  const menuRef = React.useRef<HTMLDivElement | null>(null)
+  const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
   React.useEffect(() => {
     if (workspaceKey !== undefined || workspaceFallback) return undefined
@@ -128,7 +236,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const size = viewportSize(device, avail)
   const scale = computeScale(device, avail)
   const responsive = device.presetId === 'responsive'
-  const frameBorder = device.frame && !responsive ? 20 : 0
 
   const showToast = React.useCallback((text: string) => {
     setToast(text)
@@ -408,6 +515,31 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     return () => window.clearInterval(timer)
   }, [picking, handlePick])
 
+  React.useEffect(() => {
+    if (!menuOpen) return undefined
+    const raf = window.requestAnimationFrame(() => {
+      const active = menuRef.current?.querySelector('[data-active="true"]')
+      if (active instanceof HTMLElement) active.scrollIntoView({ block: 'nearest' })
+    })
+    const onPointer = (event: PointerEvent): void => {
+      const target = event.target as Node | null
+      if (target === null) return
+      if (menuRef.current?.contains(target) === true) return
+      if (deviceBtnRef.current?.contains(target) === true) return
+      setMenuOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      window.cancelAnimationFrame(raf)
+      document.removeEventListener('pointerdown', onPointer, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [menuOpen])
+
   const navigate = (input: string): void => {
     const url = normalizeUrl(input)
     if (url === '') {
@@ -491,55 +623,86 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     { key: 'desktop', label: t('device.group.desktop'), items: PRESETS.filter((p) => p.group === 'desktop') },
   ]
 
-  const status = responsive
-    ? `${formatSize(size.w, size.h)} · ${t('status.uaDesktop')}`
-    : `${formatSize(size.w, size.h)} · DPR ${preset?.dpr ?? 1} · ${Math.round(scale * 100)}% · ${device.uaMobile ? t('status.uaMobile') : t('status.uaDesktop')}`
-
+  const frameAllowed = preset !== null && (preset.group === 'phone' || preset.group === 'tablet')
+  const frameBorder = device.frame && frameAllowed ? 16 : 0
+  const deviceLabel = preset?.title ?? (responsive ? t('device.responsive') : t('device.custom'))
+  const dirty = address.trim() !== '' && address.trim() !== currentUrl
+  const zoomLabel = device.zoom === 'fit' ? `${Math.round(scale * 100)}%` : `${Math.round(device.zoom * 100)}%`
   const showStart = currentUrl === '' && guest !== 'acquiring'
+  const zoomValues = ['fit', 0.5, 0.75, 1] as const
+  const cycleZoom = (): void =>
+    setDevice((d) => {
+      const index = zoomValues.indexOf(d.zoom as (typeof zoomValues)[number])
+      return { ...d, zoom: zoomValues[(index + 1) % zoomValues.length] }
+    })
+
+  const startCustom = (patch: { width?: number; height?: number }): void => {
+    setDevice((d) => {
+      const baseW = d.presetId === 'responsive' ? size.w : d.width
+      const baseH = d.presetId === 'responsive' ? size.h : d.height
+      return {
+        ...d,
+        presetId: 'custom',
+        width: clamp(patch.width ?? baseW, 120, 4096),
+        height: clamp(patch.height ?? baseH, 120, 4096),
+      }
+    })
+  }
+
+  const statusParts = [formatSize(size.w, size.h)]
+  statusParts.push(`${Math.round(scale * 100)}%`)
+  statusParts.push(device.uaMobile ? t('status.uaMobile') : t('status.uaDesktop'))
 
   return (
     <div className="dbs-root">
+      {/* address bar */}
       <div className="dbs-bar">
-        <button
-          className="dbs-icon"
-          title={t('toolbar.back')}
-          aria-label={t('toolbar.back')}
-          disabled={!canBack}
-          onClick={() => {
-            try {
-              webviewRef.current?.goBack()
-            } catch {
-              /* guest gone */
-            }
-          }}
-        >
-          ←
-        </button>
-        <button
-          className="dbs-icon"
-          title={t('toolbar.forward')}
-          aria-label={t('toolbar.forward')}
-          disabled={!canForward}
-          onClick={() => {
-            try {
-              webviewRef.current?.goForward()
-            } catch {
-              /* guest gone */
-            }
-          }}
-        >
-          →
-        </button>
-        <button className="dbs-icon" title={t('toolbar.reload')} aria-label={t('toolbar.reload')} onClick={reload}>
-          ⟳
-        </button>
+        <div className="dbs-nav">
+          <button
+            className="dbs-iconBtn"
+            title={t('toolbar.back')}
+            aria-label={t('toolbar.back')}
+            disabled={!canBack}
+            onClick={() => {
+              try {
+                webviewRef.current?.goBack()
+              } catch {
+                /* guest gone */
+              }
+            }}
+          >
+            <IconBack />
+          </button>
+          <button
+            className="dbs-iconBtn"
+            title={t('toolbar.forward')}
+            aria-label={t('toolbar.forward')}
+            disabled={!canForward}
+            onClick={() => {
+              try {
+                webviewRef.current?.goForward()
+              } catch {
+                /* guest gone */
+              }
+            }}
+          >
+            <IconForward />
+          </button>
+          <button className="dbs-iconBtn" title={t('toolbar.reload')} aria-label={t('toolbar.reload')} onClick={reload}>
+            <IconReload />
+          </button>
+        </div>
+
         <form
-          className="dbs-addrForm"
+          className="dbs-addrWrap"
           onSubmit={(event) => {
             event.preventDefault()
             navigate(address)
           }}
         >
+          <span className="dbs-addrIcon">
+            <IconGlobe size={14} />
+          </span>
           <input
             className="dbs-addr"
             value={address}
@@ -547,134 +710,199 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             spellCheck={false}
             onChange={(event) => setAddress(event.target.value)}
           />
+          {dirty ? (
+            <button className="dbs-go" type="submit" title={t('address.go')} aria-label={t('address.go')}>
+              <IconArrowRight />
+            </button>
+          ) : null}
         </form>
-        <button className="dbs-icon" title={t('toolbar.external')} aria-label={t('toolbar.external')} onClick={openExternal}>
-          ↗
+
+        <button className="dbs-iconBtn" title={t('toolbar.external')} aria-label={t('toolbar.external')} onClick={openExternal}>
+          <IconExternal />
         </button>
       </div>
 
-      <div className="dbs-device">
-        <select
-          className="dbs-select"
-          value={device.presetId === 'custom' ? 'custom' : device.presetId}
-          onChange={(event) => changePreset(event.target.value)}
-          aria-label={t('block.device')}
-        >
-          <option value="responsive">{t('device.responsive')}</option>
-          {device.presetId === 'custom' ? <option value="custom">{t('device.custom')}</option> : null}
-          {groups.map((group) =>
-            group.items.length === 0 ? null : (
-              <optgroup key={group.key} label={group.label}>
-                {group.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </optgroup>
-            ),
-          )}
-        </select>
-        <input
-          className="dbs-num"
-          type="number"
-          min={120}
-          max={4096}
-          value={size.w}
-          aria-label={t('toolbar.width')}
-          onChange={(event) => editSize({ width: Number(event.target.value) })}
-        />
-        <span className="dbs-dim">×</span>
-        <input
-          className="dbs-num"
-          type="number"
-          min={120}
-          max={4096}
-          value={size.h}
-          aria-label={t('toolbar.height')}
-          onChange={(event) => editSize({ height: Number(event.target.value) })}
-        />
+      {/* device bar */}
+      <div className="dbs-deviceBar">
         <button
-          className="dbs-icon"
-          title={t('toolbar.rotate')}
-          aria-label={t('toolbar.rotate')}
-          disabled={responsive}
-          onClick={() => setDevice((d) => rotate(d))}
+          ref={deviceBtnRef}
+          className="dbs-chip dbs-deviceChip"
+          aria-expanded={menuOpen}
+          aria-label={t('device.presets')}
+          onClick={() => setMenuOpen((value) => !value)}
         >
-          ⇄
+          <IconDevice group={preset?.group ?? 'desktop'} />
+          <span>{deviceLabel}</span>
+          <span className="dbs-chevron">
+            <IconChevron />
+          </span>
         </button>
-        <select
-          className="dbs-select"
-          value={String(device.zoom)}
-          onChange={(event) => {
-            const value = event.target.value
-            setDevice((d) => ({ ...d, zoom: value === 'fit' ? 'fit' : (Number(value) as 0.5 | 0.75 | 1) }))
-          }}
-          aria-label={t('zoom.fit')}
-        >
-          <option value="fit">{t('zoom.fit')}</option>
-          <option value="0.5">50%</option>
-          <option value="0.75">75%</option>
-          <option value="1">100%</option>
-        </select>
-        <button
-          className="dbs-icon"
-          data-on={device.uaMobile}
-          title="UA"
-          aria-label="UA"
-          onClick={() => setDevice((d) => ({ ...d, uaMobile: !d.uaMobile }))}
-        >
-          UA
+
+        <span className="dbs-chip dbs-sizeChip">
+          {size.w} × {size.h}
+        </span>
+
+        <button className="dbs-chip dbs-zoomChip" onClick={cycleZoom} title={t('device.zoom')}>
+          {zoomLabel}
         </button>
+
+        <div className="dbs-spacer" />
+
         <button
-          className="dbs-icon"
-          data-on={device.frame}
-          title={t('toolbar.frame')}
-          aria-label={t('toolbar.frame')}
-          onClick={() => setDevice((d) => ({ ...d, frame: !d.frame }))}
-        >
-          ▣
-        </button>
-        <button
-          className="dbs-icon"
+          className="dbs-pickBtn"
           data-on={picking}
-          title={picking ? t('toolbar.pickOn') : t('toolbar.pick')}
-          aria-label={t('toolbar.pick')}
+          disabled={!isDesktop}
+          title={!isDesktop ? t('unsupported.web') : t('toolbar.pick')}
           onClick={togglePick}
         >
-          ⊕
+          <IconPick />
+          <span>{picking ? t('toolbar.pickActive') : t('toolbar.pickShort')}</span>
         </button>
+
+        {menuOpen ? (
+          <div className="dbs-menu" ref={menuRef} role="dialog" aria-label={t('device.presets')}>
+            <div className="dbs-menuScroll">
+              <button
+                className="dbs-row"
+                data-active={responsive}
+                onClick={() => {
+                  changePreset('responsive')
+                  setMenuOpen(false)
+                }}
+              >
+                <span>{t('device.responsive')}</span>
+                <small>{t('device.fill')}</small>
+              </button>
+              {groups.map((group) => (
+                <React.Fragment key={group.key}>
+                  <div className="dbs-sectionLabel">{group.label}</div>
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      className="dbs-row"
+                      data-active={device.presetId === item.id}
+                      onClick={() => {
+                        changePreset(item.id)
+                        setMenuOpen(false)
+                      }}
+                    >
+                      <span>{item.title}</span>
+                      <small>
+                        {item.width}×{item.height}
+                      </small>
+                    </button>
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
+
+            <div className="dbs-section">
+              <div className="dbs-sectionLabel">{t('device.customSize')}</div>
+              <div className="dbs-sizeRow">
+                <input
+                  className="dbs-num"
+                  type="number"
+                  min={120}
+                  max={4096}
+                  value={responsive ? size.w : device.width}
+                  aria-label={t('toolbar.width')}
+                  onChange={(event) => startCustom({ width: Number(event.target.value) })}
+                />
+                <span className="dbs-times">×</span>
+                <input
+                  className="dbs-num"
+                  type="number"
+                  min={120}
+                  max={4096}
+                  value={responsive ? size.h : device.height}
+                  aria-label={t('toolbar.height')}
+                  onChange={(event) => startCustom({ height: Number(event.target.value) })}
+                />
+                <button
+                  className="dbs-iconBtn"
+                  title={t('toolbar.rotate')}
+                  aria-label={t('toolbar.rotate')}
+                  disabled={responsive}
+                  onClick={() => setDevice((d) => rotate(d))}
+                >
+                  <IconRotate />
+                </button>
+              </div>
+            </div>
+
+            <div className="dbs-section">
+              <div className="dbs-sectionLabel">{t('device.zoom')}</div>
+              <div className="dbs-seg">
+                {zoomValues.map((value) => (
+                  <button
+                    key={String(value)}
+                    className="dbs-segBtn"
+                    data-active={device.zoom === value}
+                    onClick={() => setDevice((d) => ({ ...d, zoom: value }))}
+                  >
+                    {value === 'fit' ? t('zoom.fit') : `${Math.round(value * 100)}%`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="dbs-section">
+              <div className="dbs-sectionLabel">{t('device.simulate')}</div>
+              <div className="dbs-toggleRow">
+                <span>{t('device.ua')}</span>
+                <Switch
+                  on={device.uaMobile}
+                  label={t('device.ua')}
+                  onChange={(next) => setDevice((d) => ({ ...d, uaMobile: next }))}
+                />
+              </div>
+              <div className="dbs-toggleRow" data-disabled={!frameAllowed}>
+                <span>{t('device.frame')}</span>
+                <Switch
+                  on={device.frame && frameAllowed}
+                  disabled={!frameAllowed}
+                  label={t('device.frame')}
+                  onChange={(next) => setDevice((d) => ({ ...d, frame: next }))}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
+      {/* viewport */}
       <div className="dbs-viewport" ref={viewportRef} data-responsive={responsive}>
         {showStart ? (
           <div className="dbs-start">
+            <div className="dbs-startIcon">
+              <IconGlobe size={22} />
+            </div>
             <b>{t('hint.start')}</b>
             <small>{t('hint.startSub')}</small>
           </div>
-        ) : null}
-
+        ) : (
         <div
-          className={`dbs-stage${device.frame && !responsive ? ' dbs-frame' : ''}`}
+          className={`dbs-stage${device.frame && frameAllowed && !responsive ? ' dbs-frame' : ''}`}
           style={
             responsive
               ? { width: '100%', height: '100%' }
               : { width: Math.max(1, size.w * scale) + frameBorder, height: Math.max(1, size.h * scale) + frameBorder }
           }
         >
-          {device.frame && !responsive && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
+          {device.frame && frameAllowed && !responsive && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
           <div
             className="dbs-canvas"
             style={
               responsive
-                ? { width: '100%', height: '100%' }
+                ? { width: '100%', height: '100%', borderRadius: 0, boxShadow: 'none' }
                 : { width: size.w, height: size.h, transform: `scale(${scale})` }
             }
           >
             {isDesktop ? <div ref={hostRef} style={{ width: '100%', height: '100%', display: 'flex' }} /> : null}
             {!isDesktop && iframeUrl !== '' ? (
               <iframe
-                className="dbs-iframe"
                 key={iframeKey}
+                className="dbs-iframe"
                 src={iframeUrl}
                 title={t('tab.title')}
                 sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
@@ -683,6 +911,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             ) : null}
           </div>
         </div>
+        )}
 
         {guest === 'acquiring' ? <div className="dbs-loading">{t('guest.acquiring')}</div> : null}
         {loading ? <div className="dbs-loading">…</div> : null}
@@ -690,20 +919,34 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           <div className="dbs-error">
             {t('guest.failed')}
             {guestError !== '' ? <div style={{ marginTop: 4, opacity: 0.7 }}>{guestError}</div> : null}
-            <div style={{ marginTop: 8 }}>
-              <button className="dbs-icon" onClick={() => setRetry((value) => value + 1)}>
+            <div style={{ marginTop: 10 }}>
+              <button className="dbs-chip" onClick={() => setRetry((value) => value + 1)}>
                 {t('guest.retry')}
               </button>
             </div>
           </div>
         ) : null}
         {loadError !== '' ? <div className="dbs-error">{loadError}</div> : null}
+        {picking && isDesktop ? (
+          <div className="dbs-pickHint">
+            <IconPick />
+            {t('hint.pickShort')}
+          </div>
+        ) : null}
         {toast !== '' ? <div className="dbs-toast">{toast}</div> : null}
       </div>
 
+      {/* status */}
       <div className="dbs-status">
-        <span>{status}</span>
-        {count > 0 ? <span>· {count}</span> : null}
+        <span>
+          {statusParts.map((part, index) => (
+            <React.Fragment key={part + index}>
+              {index > 0 ? <span className="dbs-dot">·</span> : null}
+              {part}
+            </React.Fragment>
+          ))}
+        </span>
+        <span>{count > 0 ? t('status.refs').replace('%n', String(count)) : ''}</span>
       </div>
     </div>
   )
