@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>studio fixture</title>
+    <style>
+      body { font-family: system-ui; margin: 40px; }
+      .row { display: flex; gap: 12px; align-items: center; }
+      .btn { padding: 10px 18px; border-radius: 8px; background: #2563eb; color: #fff; border: 0; }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <h1>Checkout</h1>
+      <form class="row" id="form">
+        <input id="email" placeholder="email" />
+        <button id="submit" class="btn primary" data-testid="submit-order" type="button">提交订单</button>
+      </form>
+      <div class="card"><span>Total</span><b>¥128</b></div>
+    </main>
+    <script>
+      window.__pageClicks = 0
+      document.getElementById('submit').addEventListener('click', () => { window.__pageClicks += 1 })
+    </script>
+  </body>
+</html>

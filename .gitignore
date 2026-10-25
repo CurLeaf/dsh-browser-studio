@@ -1,0 +1,4 @@
+node_modules/
+*.tgz
+test/fixture/react-app.js
+.DS_Store

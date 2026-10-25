@@ -1,0 +1,6 @@
+# dsh-browser-studio: inserts the Host row that mounts the bundle.
+# The Client half takes over the `browser` tab kind on Desktop and adds a
+# size-only preview tab on Web.
+- insert:
+    - id: browser-studio
+      name: dsh-browser-studio
