@@ -5,7 +5,7 @@ Turn the DeepSeek Harness built-in browser into a browser studio: **preview at d
 - Device toolbar: presets, custom width/height, rotate, fit-to-panel, device frame, mobile UA
 - Element picker: hover highlight, click to select, captures selector, DOM path, text, box, styles and React component name (Desktop)
 - Pick-to-chat: the composer is summoned and focused, and the element shows up as a removable **chip** above it
-- The editor only receives one compact reference line (selector / page / box / React file); the full detail lives in the chip tooltip
+- **Nothing is written into the editor**: the element details are injected by the host as a hidden context message on the next step
 - Keeps HMR, sign-ins and real interaction — it is a real browser, not a screenshot
 
 > Takeover: Desktop replaces the shipped browser tab kind (`browser`) by default; uninstalling or disabling the plugin restores it untouched.
@@ -51,7 +51,8 @@ dsh plugin --profile desktop add .
 - **Cross-origin iframes stay opaque.** Browser security model; Cursor has the same limit.
 - **Page data is untrusted.** The block is generated from page DOM inside the page's main world; review before sending.
 - **No picking on Web.** Without a guest lease there is no injection channel.
-- **Not a native mention.** DSH exposes no plugin API for inserting native reference chips into the composer, so the editor holds one compact line and the real tag sits above it, one-to-one.
+- **Context travels through the host.** The client posts details to `/browser-studio/api/refs`; the host appends a hidden `user` message with a non-`user` source kind on the next `agent/pre-step`, so neither the composer nor a chat bubble carries the element data.
+- **Unsent references expire** after 30 minutes on the host; removing a chip deletes it immediately.
 
 ## How it works
 

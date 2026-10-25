@@ -1,11 +1,11 @@
 import * as React from 'react'
 import { BrowserBody } from './tab'
 import {
+  clearPendingRefs,
   focusComposer,
   listPendingRefs,
-  registerDraftBridge,
+  publishRefs,
   removePendingRef,
-  removeTagText,
   subscribePendingRefs,
   type PendingRef,
 } from './bridge'
@@ -64,26 +64,6 @@ export function ComposerDock(props: any): React.ReactElement | null {
   const sessionId: string | undefined = props.sessionId
   const draft: string = typeof props.input?.draft === 'string' ? props.input.draft : ''
   const t: (key: string) => string = typeof props.t === 'function' ? props.t : (key) => key
-  const draftRef = React.useRef('')
-  const actionsRef = React.useRef<any>(null)
-  draftRef.current = draft
-  actionsRef.current = props.inputActions ?? null
-
-  React.useEffect(() => {
-    if (typeof sessionId !== 'string' || sessionId === '') return undefined
-    return registerDraftBridge(sessionId, {
-      getDraft: () => draftRef.current,
-      setDraft: (text: string) => {
-        const actions = actionsRef.current
-        if (actions !== null && typeof actions.setDraft === 'function') actions.setDraft(text)
-      },
-      captureInsertion: () => actionsRef.current?.captureInsertion?.(),
-      insertText: (text: string, span: unknown) => {
-        const actions = actionsRef.current
-        return actions !== null && typeof actions.insertText === 'function' ? actions.insertText(text, span) : false
-      },
-    })
-  }, [sessionId])
 
   const subscribe = React.useCallback(
     (listener: () => void) => (typeof sessionId === 'string' ? subscribePendingRefs(sessionId, listener) : () => {}),
@@ -95,20 +75,41 @@ export function ComposerDock(props: any): React.ReactElement | null {
   )
   const refs = React.useSyncExternalStore(subscribe, snapshot, snapshot)
 
-  // A send clears the draft: drop the chips the message just carried. The sweep
-  // runs twice because a fast send can happen inside the freshness window.
+  // Publish non-empty chip lists: the host injects them as one hidden context
+  // message on the next agent step.
   React.useEffect(() => {
-    if (typeof sessionId !== 'string' || draft.trim() !== '') return undefined
-    const sweep = (): void => {
-      const now = Date.now()
-      for (const ref of listPendingRefs(sessionId)) {
-        if (now - ref.createdAt > 1500) removePendingRef(sessionId, ref.id)
-      }
+    if (typeof sessionId !== 'string' || refs.length === 0) return
+    if (clearTimer.current !== 0) {
+      window.clearTimeout(clearTimer.current)
+      clearTimer.current = 0
     }
-    sweep()
-    const timer = window.setTimeout(sweep, 1800)
-    return () => window.clearTimeout(timer)
-  }, [draft, sessionId, refs.length])
+    clearGeneration.current += 1
+    publishRefs(sessionId, refs.map((ref) => ref.detail))
+  }, [refs, sessionId])
+
+  // A send empties the draft: drop the chips, then clear the host copy after the
+  // step had time to consume it. Clearing too early would race `agent/pre-step`.
+  const previousDraft = React.useRef('')
+  const clearTimer = React.useRef(0)
+  const clearGeneration = React.useRef(0)
+  React.useEffect(() => {
+    const before = previousDraft.current
+    previousDraft.current = draft
+    if (typeof sessionId !== 'string') return undefined
+    if (before.trim() === '' || draft.trim() !== '' || listPendingRefs(sessionId).length === 0) return undefined
+    clearPendingRefs(sessionId)
+    const generation = ++clearGeneration.current
+    if (clearTimer.current !== 0) window.clearTimeout(clearTimer.current)
+    clearTimer.current = window.setTimeout(() => {
+      clearTimer.current = 0
+      if (clearGeneration.current === generation && listPendingRefs(sessionId).length === 0) {
+        publishRefs(sessionId, [])
+      }
+    }, 8000)
+    return () => {
+      /* the timer is shared across renders; the generation guards it */
+    }
+  }, [draft, sessionId])
 
   if (typeof sessionId !== 'string' || refs.length === 0) return null
 
@@ -129,7 +130,7 @@ export function ComposerDock(props: any): React.ReactElement | null {
             title={t('dock.remove')}
             onClick={() => {
               removePendingRef(sessionId, ref.id)
-              removeTagText(sessionId, ref.tag)
+              publishRefs(sessionId, listPendingRefs(sessionId).map((item) => item.detail))
               focusComposer()
             }}
           >

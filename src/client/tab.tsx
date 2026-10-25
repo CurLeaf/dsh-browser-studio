@@ -5,7 +5,7 @@ import {
   applyPreset, clamp, computeScale, DEFAULT_DEVICE, formatSize, normalizeUrl, presetFor,
   rotate, viewportSize, type DeviceState,
 } from './device'
-import { addPendingRef, buildBlock, buildTag, elementLabel, focusComposer, insertAtCaret } from './bridge'
+import { addPendingRef, buildBlock, elementLabel, focusComposer } from './bridge'
 import type { AgentEvent, ElementRef } from '../shared/types'
 
 interface GuestElement extends HTMLElement {
@@ -338,20 +338,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     const label = p?.title ?? (d.presetId === 'responsive' ? 'Responsive' : 'Custom')
     const meta = { deviceLabel: label, uaMobile: d.uaMobile, locale: localeRef.current }
     const detail = buildBlock(ref, n, meta, text)
-    const tag = buildTag(ref, n, text)
-    const wasFocused =
-      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable
-    const inserted = insertAtCaret(sessionId, tag)
-    if (inserted !== 'none') {
-      addPendingRef(sessionId, { n, tag, label: elementLabel(ref), note: text, detail })
-      focusComposer(inserted === 'append' || !wasFocused)
-      showToast(t('toast.added'))
-    } else {
-      sendPrompt(sessionId, detail).then(
-        () => showToast(t('toast.sent')),
-        () => showToast(t('toast.failed')),
-      )
-    }
+    addPendingRef(sessionId, { n, label: elementLabel(ref), note: text, detail })
+    // The dock publishes the chip list to the host; the composer stays clean.
+    focusComposer(true)
+    showToast(t('toast.added'))
     pinsRef.current = [...pinsRef.current, { n, selector: ref.selector }]
     syncPins()
     closePickPopover()

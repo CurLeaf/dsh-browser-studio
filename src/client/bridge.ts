@@ -87,98 +87,12 @@ export function buildBlock(ref: ElementRef, index: number, meta: BlockMeta, note
   return lines.join('\n')
 }
 
-/** One compact line inserted at the caret; the readable card lives in the dock. */
-export function buildTag(ref: ElementRef, index: number, note = ''): string {
-  const text = ref.text !== '' ? `「${clip(ref.text, 24)}」` : ''
-  const react = reactLine(ref)
-  const parts = [
-    `⟦元素${index}⟧`,
-    `<${elementLabel(ref)}>${text}`,
-    shortPage(ref.pageUrl),
-    `${ref.rect.w}×${ref.rect.h}`,
-  ]
-  if (react !== '') parts.push(react)
-  if (note !== '') parts.push(`批注：${clip(note, 120)}`)
-  return parts.join(' · ')
-}
-
-/* ------------------------------------------------------------- composer seam */
-
-export interface DraftBridge {
-  getDraft(): string
-  setDraft(text: string): void
-  captureInsertion?: () => unknown
-  insertText?: (text: string, span: unknown) => boolean
-}
-
-const bridges = new Map<string, DraftBridge>()
-
-export function registerDraftBridge(sessionId: string, bridge: DraftBridge): () => void {
-  bridges.set(sessionId, bridge)
-  return () => {
-    if (bridges.get(sessionId) === bridge) bridges.delete(sessionId)
-  }
-}
-
-export function hasDraftBridge(sessionId: string): boolean {
-  return bridges.has(sessionId)
-}
-
-/** Insert at the caret when the host exposes the insertion seam; append otherwise. */
-export function insertAtCaret(sessionId: string, text: string): 'caret' | 'append' | 'none' {
-  const bridge = bridges.get(sessionId)
-  if (bridge === undefined) return 'none'
-  if (bridge.captureInsertion !== undefined && bridge.insertText !== undefined) {
-    try {
-      const span = bridge.captureInsertion()
-      if (bridge.insertText(text, span)) return 'caret'
-    } catch {
-      /* fall through to the append path */
-    }
-  }
-  const draft = bridge.getDraft()
-  const trimmed = draft.replace(/\s+$/, '')
-  bridge.setDraft(trimmed === '' ? text : `${trimmed}\n${text}`)
-  return 'append'
-}
-
-/** Focus the composer so the user can type right after a pick. */
-export function focusComposer(toEnd = false): void {
-  if (typeof document === 'undefined') return
-  const active = document.activeElement
-  if (active instanceof HTMLElement && active.isContentEditable) {
-    if (!toEnd) return
-  }
-  const editor = document.querySelector('[contenteditable="true"]')
-  if (!(editor instanceof HTMLElement)) return
-  editor.focus()
-  editor.scrollIntoView({ block: 'nearest' })
-  if (!toEnd) return
-  const selection = window.getSelection()
-  if (selection === null) return
-  const range = document.createRange()
-  range.selectNodeContents(editor)
-  range.collapse(false)
-  selection.removeAllRanges()
-  selection.addRange(range)
-}
-
-/** Remove a tag line again when its chip is dismissed. */
-export function removeTagText(sessionId: string, tag: string): void {
-  const bridge = bridges.get(sessionId)
-  if (bridge === undefined) return
-  const draft = bridge.getDraft()
-  if (!draft.includes(tag)) return
-  const next = draft.replace(tag, '').replace(/\n{2,}/g, '\n').trimEnd()
-  bridge.setDraft(next)
-}
-
 /* --------------------------------------------------------------- ref chips */
 
 export interface PendingRef {
   id: string
   n: number
-  tag: string
+  tag?: string
   label: string
   note?: string
   detail: string
@@ -237,5 +151,40 @@ export function subscribePendingRefs(sessionId: string, listener: () => void): (
     if (current === undefined) return
     current.delete(listener)
     if (current.size === 0) listeners.delete(sessionId)
+  }
+}
+
+/** Focus the composer so the user can describe the change right away. */
+export function focusComposer(toEnd = false): void {
+  if (typeof document === 'undefined') return
+  const active = document.activeElement
+  if (active instanceof HTMLElement && active.isContentEditable) {
+    if (!toEnd) return
+  }
+  const editor = document.querySelector('[contenteditable="true"]')
+  if (!(editor instanceof HTMLElement)) return
+  editor.focus()
+  editor.scrollIntoView({ block: 'nearest' })
+  if (!toEnd) return
+  const selection = window.getSelection()
+  if (selection === null) return
+  const range = document.createRange()
+  range.selectNodeContents(editor)
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
+/** Post the current element details to the host; the next agent step injects them. */
+export function publishRefs(sessionId: string, blocks: string[]): void {
+  if (typeof fetch !== 'function' || sessionId === '') return
+  try {
+    void fetch('/browser-studio/api/refs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, blocks }),
+    }).catch(() => {})
+  } catch {
+    /* the host route is optional; the chips still work */
   }
 }
