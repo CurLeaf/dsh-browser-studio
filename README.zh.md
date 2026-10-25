@@ -78,6 +78,15 @@ npm run test:all
 
 `src/client/presets.ts` 由 `scripts/gen-presets.mjs` 生成，不要手改。
 
+### 已验证到什么程度
+
+- `vitest`：URL 归一、缩放/旋转、元素块、草稿桥、apply 注册（13 项）。
+- `test/bundle.e2e.mjs`：在 Chrome 里加载**构建产物**，用假 React + 假 Cordis 跑 `apply()`，确认注册了 `browser` 接管、tab 正文和 dock。
+- `test/agent.e2e.mjs` / `test/react-agent.e2e.mjs`：真实 Chrome 里跑注入脚本，验证点选、payload、捕获期拦截、pin、Esc；React fixture 验证 bippy 能拿到组件名。
+- `test/electron/spike.mjs`：**Electron 44.7（与 DSH Desktop 同大版本）**里验证三件事——`<webview>` 视口等于它的 CSS 盒子、CSS transform 缩放后渲染与点击都按缩放后的几何走、`setUserAgent` + reload 生效。
+
+尚未在真实的 DSH Desktop 里跑过一次完整安装（需要重启桌面端）。
+
 ## 许可
 
 MIT。第三方许可见 [NOTICE](./NOTICE)。

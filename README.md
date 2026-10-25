@@ -66,6 +66,15 @@ npm run test:agent
 npm run test:all
 ```
 
+### Verified so far
+
+- `vitest`: URL normalization, fit/rotate math, element block, draft bridge, apply wiring (13 tests).
+- `test/bundle.e2e.mjs`: loads the **built bundle** in Chrome with a stub module loader + fake Cordis ctx and asserts the browser takeover, tab body and dock registrations.
+- `test/agent.e2e.mjs` / `test/react-agent.e2e.mjs`: real Chrome, real clicks — picking, payload, capture-phase guard, pins, Esc; the React fixture proves bippy resolves component names.
+- `test/electron/spike.mjs`: on **Electron 44.7** (same major as DSH Desktop) it proves the webview viewport equals its CSS box, CSS-transform scaling renders and routes input in scaled coordinates, and `setUserAgent` + reload applies.
+
+Not yet installed into a live DSH Desktop profile (that needs a desktop restart).
+
 ## License
 
 MIT. Third-party notices in [NOTICE](./NOTICE).

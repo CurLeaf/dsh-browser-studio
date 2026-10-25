@@ -43,7 +43,8 @@
     "test:bundle": "node scripts/build-client.mjs && node test/bundle.e2e.mjs",
     "test:all": "npm run build && npm run typecheck && vitest run && npm run test:bundle && npm run test:agent",
     "build:fixture": "esbuild test/fixture/react-app.tsx --bundle --format=iife --platform=browser --jsx=automatic --define:process.env.NODE_ENV='\"development\"' --outfile=test/fixture/react-app.js --log-level=error",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:electron": "node test/electron/spike.mjs"
   },
   "license": "MIT",
   "repository": {

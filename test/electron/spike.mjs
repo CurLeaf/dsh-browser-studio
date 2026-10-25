@@ -8,7 +8,11 @@
  */
 import { _electron as electron } from 'playwright-core'
 
-const app = await electron.launch({ args: ['test/electron/main.js'] })
+// The harness shell may export ELECTRON_RUN_AS_NODE=1, which turns Electron into
+// plain Node and hides the app module.
+delete process.env.ELECTRON_RUN_AS_NODE
+
+const app = await electron.launch({ args: ['test/electron/main.cjs'] })
 const host = await app.firstWindow()
 await host.waitForLoadState('domcontentloaded')
 
