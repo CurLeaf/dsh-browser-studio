@@ -5,7 +5,7 @@ import {
   applyPreset, clamp, computeScale, DEFAULT_DEVICE, formatSize, normalizeUrl, presetFor,
   rotate, viewportSize, type DeviceState,
 } from './device'
-import { buildBlock, insertBlock } from './bridge'
+import { addPendingRef, buildBlock, buildTag, elementLabel, focusComposer, insertAtCaret } from './bridge'
 import type { AgentEvent, ElementRef } from '../shared/types'
 
 interface GuestElement extends HTMLElement {
@@ -292,12 +292,17 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     const d = deviceRef.current
     const p = presetFor(d.presetId)
     const label = p?.title ?? (d.presetId === 'responsive' ? 'Responsive' : 'Custom')
-    const block = buildBlock(ref, n, { deviceLabel: label, uaMobile: d.uaMobile, locale: localeRef.current })
-    const inserted = insertBlock(sessionId, block)
-    if (inserted) {
+    const meta = { deviceLabel: label, uaMobile: d.uaMobile, locale: localeRef.current }
+    const detail = buildBlock(ref, n, meta)
+    const tag = buildTag(ref, n)
+    const wasFocused = typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable
+    const inserted = insertAtCaret(sessionId, tag)
+    if (inserted !== 'none') {
+      addPendingRef(sessionId, { n, tag, label: elementLabel(ref), detail })
+      focusComposer(inserted === 'append' || !wasFocused)
       showToast(t('toast.added'))
     } else {
-      sendPrompt(sessionId, block).then(
+      sendPrompt(sessionId, detail).then(
         () => showToast(t('toast.sent')),
         () => showToast(t('toast.failed')),
       )

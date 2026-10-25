@@ -4,7 +4,8 @@ Turn the DeepSeek Harness built-in browser into a browser studio: **preview at d
 
 - Device toolbar: presets, custom width/height, rotate, fit-to-panel, device frame, mobile UA
 - Element picker: hover highlight, click to select, captures selector, DOM path, text, box, styles and React component name (Desktop)
-- One click into the chat: inserts into the composer (Cursor-style), falls back to a direct message
+- Pick-to-chat: the composer is summoned and focused, and the element shows up as a removable **chip** above it
+- The editor only receives one compact reference line (selector / page / box / React file); the full detail lives in the chip tooltip
 - Keeps HMR, sign-ins and real interaction — it is a real browser, not a screenshot
 
 > Takeover: Desktop replaces the shipped browser tab kind (`browser`) by default; uninstalling or disabling the plugin restores it untouched.
@@ -35,8 +36,14 @@ dsh plugin --profile desktop add .
 1. Open **Browser** in the right sidebar (`Ctrl/Cmd+T`) and enter `localhost:5173`.
 2. Use the second toolbar row to pick a device, or type a width/height.
 3. `UA` switches to a mobile user agent (reloads once); `▣` draws a device frame; `Fit` scales the viewport into the panel.
-4. Press `⊕` to start picking: hover highlights the element, click adds it to the composer; `Esc` exits.
-5. Add an instruction in the composer and send.
+4. Press `⊕` to start picking: hover highlights the element, click references it; `Esc` exits.
+5. The composer is focused automatically and a chip appears above it; the editor gets one compact line:
+
+```
+⟦元素1⟧ · <button#submit.btn.primary>「提交订单」 · localhost:5173/checkout · 120×40 · src/components/checkout.tsx
+```
+
+6. Add an instruction and send. Chips clear with the message; `×` removes one chip and its line.
 
 ## Deliberate limits
 
@@ -44,6 +51,7 @@ dsh plugin --profile desktop add .
 - **Cross-origin iframes stay opaque.** Browser security model; Cursor has the same limit.
 - **Page data is untrusted.** The block is generated from page DOM inside the page's main world; review before sending.
 - **No picking on Web.** Without a guest lease there is no injection channel.
+- **Not a native mention.** DSH exposes no plugin API for inserting native reference chips into the composer, so the editor holds one compact line and the real tag sits above it, one-to-one.
 
 ## How it works
 

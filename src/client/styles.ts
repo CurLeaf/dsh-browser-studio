@@ -223,6 +223,30 @@ export const CSS = `
   background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary);
   border: 1px solid var(--dsw-alias-border-l2); z-index: 5;
 }
+/* ---------------------------------------------------------------- ref chips */
+.dbs-refs {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 8px;
+}
+.dbs-refChip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  height: 26px; padding: 0 4px 0 9px; border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary); font-size: 11.5px; line-height: 1;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+.dbs-refIcon { display: inline-flex; flex: none; color: var(--dsw-alias-brand-primary, #2f6fed); }
+.dbs-refChip b { flex: none; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dbs-refLabel {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 168px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; opacity: .8;
+}
+.dbs-refRemove {
+  flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer;
+  font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+}
+.dbs-refRemove:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
+
 /* narrow sidebars */
 @container (max-width: 372px) {
   .dbs-sizeChip { display: none; }

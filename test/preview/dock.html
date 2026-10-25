@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>dock preview</title>
+<style>
+  :root {
+    --dsw-alias-bg-base: #0f1114; --dsw-alias-bg-layer-1: #15181d; --dsw-alias-bg-layer-2: #1b1f26;
+    --dsw-alias-bg-layer-3: #232833; --dsw-alias-border-l1: rgba(255,255,255,.07);
+    --dsw-alias-border-l2: rgba(255,255,255,.12); --dsw-alias-label-primary: #e7e9ee;
+    --dsw-alias-label-secondary: #a7aeba; --dsw-alias-label-tertiary: #737b89;
+    --dsw-alias-brand-primary: #e8a33d;
+  }
+  html, body { margin: 0; height: 100%; background: #0b0d10; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; }
+  .composer { width: 640px; padding: 14px 0 18px; background: #0f1114; border-radius: 14px; border: 1px solid var(--dsw-alias-border-l2); }
+  .composerBox { margin: 0 14px; height: 64px; border-radius: 14px; border: 1px solid var(--dsw-alias-border-l2);
+    background: var(--dsw-alias-bg-layer-1); display: flex; align-items: flex-start; justify-content: space-between; padding: 14px; }
+  .composerText { color: var(--dsw-alias-label-primary); font-size: 13px; }
+  .composerSend { width: 26px; height: 26px; border-radius: 50%; background: var(--dsw-alias-brand-primary); color: #1a1206;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; }
+</style></head>
+<body><div id="root"></div><script src="/dock-preview.js"></script></body></html>
