@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>guest</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #f4f6fb; }
+  #probe { position: absolute; left: 300px; top: 200px; width: 100px; height: 100px; background: #e11d48; }
+  #ua { position: absolute; left: 8px; top: 8px; font: 12px monospace; }
+  #vp { position: absolute; left: 8px; top: 26px; font: 12px monospace; }
+</style></head>
+<body>
+  <div id="probe"></div>
+  <div id="ua"></div>
+  <div id="vp"></div>
+  <script>
+    window.clicks = 0
+    document.getElementById('probe').addEventListener('click', () => { window.clicks += 1 })
+    document.getElementById('ua').textContent = navigator.userAgent.slice(0, 60)
+    document.getElementById('vp').textContent = innerWidth + 'x' + innerHeight + ' dpr=' + devicePixelRatio
+    window.__probeState = () => ({ clicks: window.clicks, ua: navigator.userAgent, w: innerWidth, h: innerHeight })
+  </script>
+</body></html>

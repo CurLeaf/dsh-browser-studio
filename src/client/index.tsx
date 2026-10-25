@@ -94,8 +94,10 @@ export function apply(ctx: any): void {
           {
             name: 'conversation.input.dock',
             id: 'browser-studio-dock',
-            order: 20,
+            order: 15,
+            locale: NS,
             label: () => t('dock.label'),
+            inject: (sessionId: string) => ({ sessionId }),
           },
           ComposerDock,
         ),

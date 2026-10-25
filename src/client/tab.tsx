@@ -95,6 +95,15 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [avail, setAvail] = React.useState({ w: 0, h: 0 })
   const [iframeUrl, setIframeUrl] = React.useState('')
   const [iframeKey, setIframeKey] = React.useState(0)
+  const [workspaceFallback, setWorkspaceFallback] = React.useState(false)
+
+  React.useEffect(() => {
+    if (workspaceKey !== undefined || workspaceFallback) return undefined
+    const timer = window.setTimeout(() => setWorkspaceFallback(true), 4000)
+    return () => window.clearTimeout(timer)
+  }, [workspaceKey, workspaceFallback])
+
+  const effectiveWorkspaceKey = workspaceKey ?? (workspaceFallback ? `session:${sessionId}` : undefined)
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null)
   const hostRef = React.useRef<HTMLDivElement | null>(null)
@@ -119,6 +128,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const size = viewportSize(device, avail)
   const scale = computeScale(device, avail)
   const responsive = device.presetId === 'responsive'
+  const frameBorder = device.frame && !responsive ? 20 : 0
 
   const showToast = React.useCallback((text: string) => {
     setToast(text)
@@ -189,7 +199,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     if (!isDesktop) return undefined
     const host = hostRef.current
     if (host === null) return undefined
-    if (workspaceKey === undefined) return undefined
+    if (effectiveWorkspaceKey === undefined) return undefined
 
     let cancelled = false
     let element: GuestElement | null = null
@@ -267,7 +277,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     const create = async (): Promise<void> => {
       let reservation: { lease: string; partition: string }
       try {
-        reservation = await desktop.acquire(workspaceKey)
+        reservation = await desktop.acquire(effectiveWorkspaceKey)
       } catch (error) {
         if (!cancelled) {
           setGuest('failed')
@@ -357,7 +367,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       cancelled = true
       dispose()
     }
-  }, [isDesktop, workspaceKey, retry, sessionId, tabId, desktop, t])
+  }, [isDesktop, effectiveWorkspaceKey, retry, sessionId, tabId, desktop, t])
 
   // Apply the user agent; reload only when it actually changes after first use.
   React.useEffect(() => {
@@ -648,7 +658,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           style={
             responsive
               ? { width: '100%', height: '100%' }
-              : { width: Math.max(1, size.w * scale), height: Math.max(1, size.h * scale) }
+              : { width: Math.max(1, size.w * scale) + frameBorder, height: Math.max(1, size.h * scale) + frameBorder }
           }
         >
           {device.frame && !responsive && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
