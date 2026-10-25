@@ -65,6 +65,7 @@ function boot(): void {
   let pinNodes: Array<{ el: HTMLDivElement; selector: string; n: number }> = []
   let events: AgentEvent[] = []
   let pins: Pin[] = []
+  let highlighted: Element | null = null
   let pending: Array<Promise<void>> = []
   let copy = { pick: '点击元素加入对话 · Esc 退出', added: '已加入对话' }
 
@@ -90,6 +91,7 @@ function boot(): void {
     shadow.appendChild(style)
     box = doc.createElement('div')
     box.setAttribute('style', BOX_CSS)
+    box.setAttribute('data-dbs-box', '')
     tag = doc.createElement('div')
     tag.setAttribute('style', TAG_CSS)
     pinsLayer = doc.createElement('div')
@@ -368,6 +370,17 @@ function boot(): void {
     }
   }
 
+  function paintHighlight(): void {
+    if (highlighted === null || box === null) return
+    if (!highlighted.isConnected) {
+      highlighted = null
+      box.style.display = 'none'
+      return
+    }
+    box.style.display = 'block'
+    position(highlighted, box)
+  }
+
   function paintPins(): void {
     if (shadow === null) return
     if (pinsLayer === null) return
@@ -395,8 +408,8 @@ function boot(): void {
     }
   }
 
-  window.addEventListener('scroll', () => layoutPins(), { capture: true, passive: true })
-  window.addEventListener('resize', () => layoutPins(), { passive: true })
+  window.addEventListener('scroll', () => { layoutPins(); paintHighlight() }, { capture: true, passive: true })
+  window.addEventListener('resize', () => { layoutPins(); paintHighlight() }, { passive: true })
 
   function call(cmd: string, arg?: unknown): unknown {
     switch (cmd) {
@@ -420,6 +433,32 @@ function boot(): void {
         }
         return take()
       }
+      case 'rect': {
+        const selector = typeof arg === 'string' ? arg : ''
+        const el = selector === '' ? null : safe(() => doc.querySelector(selector), null)
+        if (el === null) return null
+        const r = el.getBoundingClientRect()
+        return {
+          x: r.left,
+          y: r.top,
+          w: r.width,
+          h: r.height,
+          vw: window.innerWidth,
+          vh: window.innerHeight,
+        }
+      }
+      case 'highlight': {
+        const selector = typeof arg === 'string' ? arg : ''
+        if (selector === '') {
+          highlighted = null
+          if (box !== null) box.style.display = 'none'
+          return { ok: true }
+        }
+        const el = safe(() => doc.querySelector(selector), null)
+        highlighted = el
+        paintHighlight()
+        return { ok: el !== null }
+      }
       case 'pins': {
         pins = Array.isArray(arg) ? (arg as Pin[]) : []
         paintPins()
@@ -428,6 +467,8 @@ function boot(): void {
       case 'clear':
         pins = []
         events = []
+        highlighted = null
+        if (box !== null) box.style.display = 'none'
         if (pinsLayer !== null) pinsLayer.textContent = ''
         return { ok: true }
       case 'copy': {

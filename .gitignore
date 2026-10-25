@@ -3,5 +3,7 @@ node_modules/
 test/fixture/react-app.js
 test/electron/spike.png
 test/preview/preview.js
+test/preview/pop-preview.js
+test/preview/dock-preview.js
 test/preview/shot-*.png
 .DS_Store

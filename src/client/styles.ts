@@ -236,9 +236,13 @@ export const CSS = `
 }
 .dbs-refIcon { display: inline-flex; flex: none; color: var(--dsw-alias-brand-primary, #2f6fed); }
 .dbs-refChip b { flex: none; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dbs-refNote {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;
+  color: var(--dsw-alias-label-primary); font-size: 11.5px;
+}
 .dbs-refLabel {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 168px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; opacity: .8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; opacity: .7;
 }
 .dbs-refRemove {
   flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
@@ -246,6 +250,55 @@ export const CSS = `
   font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
 }
 .dbs-refRemove:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
+
+/* ---------------------------------------------------------- annotation pop */
+.dbs-pop {
+  position: absolute; z-index: 12; display: flex; flex-direction: column; gap: 8px;
+  padding: 9px 10px 10px; border-radius: 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 92%, #000);
+  box-shadow: 0 18px 44px rgba(0,0,0,.42), 0 2px 8px rgba(0,0,0,.24);
+}
+.dbs-popHead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dbs-popKicker { flex: none; font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dbs-popTarget {
+  flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dbs-popClose {
+  flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--dsw-alias-label-tertiary);
+  font-size: 14px; line-height: 1; cursor: pointer;
+}
+.dbs-popClose:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
+.dbs-popRow {
+  display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 5px 0 10px;
+  border-radius: 10px; border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  transition: border-color 120ms ease;
+}
+.dbs-popRow:focus-within {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 50%, transparent);
+}
+.dbs-popLink { display: inline-flex; flex: none; color: var(--dsw-alias-brand-primary, #2f6fed); }
+.dbs-popInput {
+  flex: 1 1 auto; min-width: 0; height: 100%; border: 0; outline: 0; padding: 0;
+  background: transparent; color: var(--dsw-alias-label-primary);
+  font: inherit; font-size: 12.5px;
+}
+.dbs-popInput::placeholder { color: var(--dsw-alias-label-tertiary); }
+.dbs-popSend {
+  flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 16%, transparent);
+  color: var(--dsw-alias-brand-primary, #2f6fed);
+  transition: background 120ms ease;
+}
+.dbs-popSend:disabled { opacity: .35; cursor: default; }
+.dbs-popSend:not(:disabled):hover {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 28%, transparent);
+}
 
 /* narrow sidebars */
 @container (max-width: 372px) {

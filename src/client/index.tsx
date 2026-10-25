@@ -120,6 +120,7 @@ export function ComposerDock(props: any): React.ReactElement | null {
             <RefIcon />
           </span>
           <b>{t('dock.index').replace('%n', String(ref.n))}</b>
+          {ref.note !== undefined && ref.note !== '' ? <span className="dbs-refNote">{ref.note}</span> : null}
           <span className="dbs-refLabel">{ref.label}</span>
           <button
             type="button"

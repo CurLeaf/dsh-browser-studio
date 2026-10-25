@@ -57,6 +57,16 @@ for (const [name, ok] of checks) if (!ok) throw new Error(`check failed: ${name}
 const pageClicks = await page.evaluate('window.__pageClicks')
 if (pageClicks !== 0) throw new Error(`the page received the picking click (${pageClicks})`)
 
+const rect = await page.evaluate(`window.__DSH_STUDIO_AGENT__.call('rect', ${JSON.stringify(ref.selector)})`)
+if (rect === null || rect.w < 10 || rect.h < 10) throw new Error(`rect failed: ${JSON.stringify(rect)}`)
+
+const highlightOn = await page.evaluate(`window.__DSH_STUDIO_AGENT__.call('highlight', ${JSON.stringify(ref.selector)})`)
+const boxShown = await page.evaluate(`document.querySelector('[data-dsh-studio-host]').shadowRoot.querySelector('[data-dbs-box]').style.display`)
+if (!highlightOn.ok || boxShown !== 'block') throw new Error(`highlight failed: ${JSON.stringify({ highlightOn, boxShown })}`)
+await page.evaluate(`window.__DSH_STUDIO_AGENT__.call('highlight', null)`)
+const boxHidden = await page.evaluate(`document.querySelector('[data-dsh-studio-host]').shadowRoot.querySelector('[data-dbs-box]').style.display`)
+if (boxHidden !== 'none') throw new Error(`highlight did not clear: ${boxHidden}`)
+
 await page.evaluate(`window.__DSH_STUDIO_AGENT__.call('pins', ${JSON.stringify([{ n: 1, selector: ref.selector }])})`)
 const pins = await page.evaluate(`document.querySelector('[data-dsh-studio-host]').shadowRoot.querySelectorAll('div').length`)
 if (pins < 3) throw new Error(`pins were not painted (${pins})`)

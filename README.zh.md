@@ -36,8 +36,8 @@ dsh plugin --profile desktop add .
 1. 右侧栏打开「浏览器」（`Ctrl/Cmd+T`），输入 `localhost:5173` 这类地址。
 2. 第二行工具栏选设备：`iPhone 15` / `Pixel 9` / `iPad Pro 13` / 桌面尺寸，或直接改宽高。
 3. 点 `UA` 可切移动端 UA（会 reload 一次）；点 `▣` 显示设备外框；`适应` 会自动缩放到面板大小。
-4. 点 `⊕` 进入点选：鼠标划过元素出现高亮和尺寸标签，点击即可引用；`Esc` 退出。
-5. 拾取后输入框自动聚焦，上方出现「元素 1 · button#submit」标签，编辑区里只插入一行紧凑引用：
+4. 点 `⊕` 进入点选：鼠标划过元素出现高亮和尺寸标签，点击后**元素被蓝框标出**，旁边浮出「批注」卡片（跟随元素，页面滚动也不会跑偏）。
+5. 在卡片里写「圆角改小一点」，`Enter` 或点 → 确认；`Esc` 或 `×` 取消。确认后输入框自动聚焦，上方出现「元素 1 · button#submit」标签，编辑区里只插入一行紧凑引用：
 
 ```
 ⟦元素1⟧ · <button#submit.btn.primary>「提交订单」 · localhost:5173/checkout · 120×40 · src/components/checkout.tsx

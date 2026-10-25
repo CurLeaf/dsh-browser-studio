@@ -107,6 +107,13 @@ const IconGlobe = (props: { size?: number }): React.ReactElement => (
     <path d="M8 2.5c-1.7 1.6-1.7 9.4 0 11" />
   </Svg>
 )
+const IconLink = (): React.ReactElement => (
+  <Svg>
+    <path d="M6.6 9.4 9.4 6.6" />
+    <path d="M7.4 5.1 8.8 3.7a2.5 2.5 0 0 1 3.5 3.5L10.9 8.6" />
+    <path d="M8.6 10.9 7.2 12.3a2.5 2.5 0 0 1-3.5-3.5l1.4-1.4" />
+  </Svg>
+)
 const IconChevron = (): React.ReactElement => (
   <Svg size={12}><path d="M4 6.5 8 10 12 6.5" /></Svg>
 )
@@ -203,6 +210,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [workspaceFallback, setWorkspaceFallback] = React.useState(false)
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [hostReady, setHostReady] = React.useState(false)
+  const [pendingPick, setPendingPick] = React.useState<ElementRef | null>(null)
+  const [note, setNote] = React.useState('')
+  const [anchor, setAnchor] = React.useState<{ left: number; top: number; w: number; h: number } | null>(null)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
@@ -216,6 +226,11 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null)
   const hostRef = React.useRef<HTMLDivElement | null>(null)
+  const stageRef = React.useRef<HTMLDivElement | null>(null)
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const pendingRef = React.useRef<ElementRef | null>(null)
+  const noteRef = React.useRef('')
+  const scaleRef = React.useRef(1)
   const setHostNode = React.useCallback((node: HTMLDivElement | null): void => {
     hostRef.current = node
     setHostReady(node !== null)
@@ -233,6 +248,8 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const tabSignalRef = React.useRef<AbortSignal | undefined>(undefined)
 
   deviceRef.current = device
+  pendingRef.current = pendingPick
+  noteRef.current = note
   localeRef.current = locale
   pickingRef.current = picking
 
@@ -240,6 +257,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const ua = device.uaMobile ? preset?.ua ?? FALLBACK_MOBILE_UA : DESKTOP_UA
   const size = viewportSize(device, avail)
   const scale = computeScale(device, avail)
+  scaleRef.current = scale
   const responsive = device.presetId === 'responsive'
 
   const showToast = React.useCallback((text: string) => {
@@ -285,7 +303,33 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     el.executeJavaScript(callCode('pins', pinsRef.current), false).catch(() => {})
   }, [])
 
-  const handlePick = React.useCallback((ref: ElementRef) => {
+  const beginPick = React.useCallback((ref: ElementRef) => {
+    if (pendingRef.current !== null) return
+    pendingRef.current = ref
+    setPendingPick(ref)
+    setNote('')
+    window.setTimeout(() => inputRef.current?.focus(), 40)
+  }, [])
+
+  const resumePagePicking = React.useCallback(() => {
+    const el = webviewRef.current
+    if (el === null || !readyRef.current || !pickingRef.current) return
+    el.executeJavaScript(callCode('pick', true), false).catch(() => {})
+  }, [])
+
+  const closePickPopover = React.useCallback(() => {
+    pendingRef.current = null
+    noteRef.current = ''
+    setPendingPick(null)
+    setAnchor(null)
+    setNote('')
+    resumePagePicking()
+  }, [resumePagePicking])
+
+  const confirmPick = React.useCallback(() => {
+    const ref = pendingRef.current
+    if (ref === null) return
+    const text = noteRef.current.trim()
     const n = countRef.current + 1
     countRef.current = n
     setCount(n)
@@ -293,12 +337,13 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     const p = presetFor(d.presetId)
     const label = p?.title ?? (d.presetId === 'responsive' ? 'Responsive' : 'Custom')
     const meta = { deviceLabel: label, uaMobile: d.uaMobile, locale: localeRef.current }
-    const detail = buildBlock(ref, n, meta)
-    const tag = buildTag(ref, n)
-    const wasFocused = typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable
+    const detail = buildBlock(ref, n, meta, text)
+    const tag = buildTag(ref, n, text)
+    const wasFocused =
+      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable
     const inserted = insertAtCaret(sessionId, tag)
     if (inserted !== 'none') {
-      addPendingRef(sessionId, { n, tag, label: elementLabel(ref), detail })
+      addPendingRef(sessionId, { n, tag, label: elementLabel(ref), note: text, detail })
       focusComposer(inserted === 'append' || !wasFocused)
       showToast(t('toast.added'))
     } else {
@@ -309,7 +354,50 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
     pinsRef.current = [...pinsRef.current, { n, selector: ref.selector }]
     syncPins()
-  }, [sessionId, sendPrompt, showToast, t, syncPins])
+    closePickPopover()
+  }, [closePickPopover, sendPrompt, sessionId, showToast, syncPins, t])
+
+  // Keep the popover anchored to the picked element while the page scrolls.
+  React.useEffect(() => {
+    if (pendingPick === null) return undefined
+    let cancelled = false
+    const update = (): void => {
+      const el = webviewRef.current
+      const stage = stageRef.current
+      const viewport = viewportRef.current
+      if (el === null || stage === null || viewport === null) return
+      el.executeJavaScript(callCode('rect', pendingPick.selector), false).then(
+        (rect: unknown) => {
+          if (cancelled) return
+          const r = rect as { x: number; y: number; w: number; h: number } | null
+          if (r === null || r === undefined) return
+          const stageRect = stage.getBoundingClientRect()
+          const viewportRect = viewport.getBoundingClientRect()
+          const s = scaleRef.current
+          setAnchor({
+            left: stageRect.left - viewportRect.left + r.x * s + viewport.scrollLeft,
+            top: stageRect.top - viewportRect.top + r.y * s + viewport.scrollTop,
+            w: r.w * s,
+            h: r.h * s,
+          })
+        },
+        () => {},
+      )
+    }
+    update()
+    const timer = window.setInterval(update, 180)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [pendingPick])
+
+  React.useEffect(() => {
+    const el = webviewRef.current
+    if (el === null || !readyRef.current) return
+    const selector = pendingPick === null ? null : pendingPick.selector
+    el.executeJavaScript(callCode('highlight', selector), false).catch(() => {})
+  }, [pendingPick])
 
   // Guest lifecycle: one lease, one webview, events wired to React state.
   React.useLayoutEffect(() => {
@@ -516,7 +604,12 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         (result: unknown) => {
           const events = (result as { events?: AgentEvent[] } | undefined)?.events ?? []
           for (const event of events) {
-            if (event.kind === 'pick') handlePick(event.ref)
+            if (event.kind === 'pick') {
+              beginPick(event.ref)
+              if (webviewRef.current !== null) {
+                webviewRef.current.executeJavaScript(callCode('pick', false), false).catch(() => {})
+              }
+            }
             if (event.kind === 'esc') setPicking(false)
           }
         },
@@ -524,7 +617,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       )
     }, 170)
     return () => window.clearInterval(timer)
-  }, [picking, handlePick])
+  }, [picking, beginPick])
 
   React.useEffect(() => {
     if (!menuOpen) return undefined
@@ -602,6 +695,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
     const next = !picking
     setPicking(next)
+    if (!next && pendingRef.current !== null) closePickPopover()
     const el = webviewRef.current
     if (el !== null && readyRef.current) {
       el.executeJavaScript(callCode('pick', next), false).catch(() => {})
@@ -659,6 +753,16 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       }
     })
   }
+
+  const POP_W = Math.min(340, Math.max(240, (avail.w || 360) - 24))
+  const POP_H = 92
+  const popLeft = anchor === null ? 12 : clamp(anchor.left, 8, Math.max(8, avail.w - POP_W - 8))
+  const popTop =
+    anchor === null
+      ? 12
+      : anchor.top + anchor.h + 10 + POP_H <= avail.h
+        ? anchor.top + anchor.h + 10
+        : Math.max(8, anchor.top - POP_H - 10)
 
   const statusParts = [formatSize(size.w, size.h)]
   statusParts.push(`${Math.round(scale * 100)}%`)
@@ -884,6 +988,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       {/* viewport */}
       <div className="dbs-viewport" ref={viewportRef} data-responsive={responsive}>
         <div
+          ref={stageRef}
           className={`dbs-stage${device.frame && frameAllowed && !responsive ? ' dbs-frame' : ''}`}
           style={{
             ...(responsive
@@ -914,6 +1019,56 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           </div>
         </div>
 
+        {pendingPick !== null ? (
+          <div
+            className="dbs-pop"
+            style={{ left: popLeft, top: popTop, width: POP_W }}
+            role="dialog"
+            aria-label={t('popover.title')}
+          >
+            <div className="dbs-popHead">
+              <span className="dbs-popKicker">{t('popover.title')}</span>
+              <span className="dbs-popTarget">{elementLabel(pendingPick)}</span>
+              <button className="dbs-popClose" onClick={closePickPopover} aria-label={t('popover.cancel')}>
+                ×
+              </button>
+            </div>
+            <div className="dbs-popRow">
+              <span className="dbs-popLink">
+                <IconLink />
+              </span>
+              <input
+                ref={inputRef}
+                className="dbs-popInput"
+                value={note}
+                placeholder={t('popover.placeholder')}
+                spellCheck={false}
+                onChange={(event) => setNote(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    confirmPick()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    closePickPopover()
+                  }
+                }}
+              />
+              <button
+                className="dbs-popSend"
+                onClick={confirmPick}
+                disabled={note.trim() === ''}
+                aria-label={t('popover.confirm')}
+                title={t('popover.confirm')}
+              >
+                <IconArrowRight />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {showStart ? (
           <div className="dbs-start">
             <div className="dbs-startIcon">
@@ -938,7 +1093,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           </div>
         ) : null}
         {loadError !== '' ? <div className="dbs-error">{loadError}</div> : null}
-        {picking && isDesktop ? (
+        {picking && isDesktop && pendingPick === null ? (
           <div className="dbs-pickHint">
             <IconPick />
             {t('hint.pickShort')}

@@ -53,6 +53,12 @@ describe('buildTag', () => {
     expect(tag).toContain('120×40')
     expect(tag).toContain('src/components/checkout.tsx')
   })
+
+  it('carries the annotation inline', () => {
+    const tag = buildTag(ref, 3, '把圆角改小一点')
+    expect(tag).toContain('批注：把圆角改小一点')
+    expect(buildTag(ref, 3)).not.toContain('批注')
+  })
 })
 
 describe('draft seam', () => {

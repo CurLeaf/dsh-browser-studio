@@ -36,8 +36,8 @@ dsh plugin --profile desktop add .
 1. Open **Browser** in the right sidebar (`Ctrl/Cmd+T`) and enter `localhost:5173`.
 2. Use the second toolbar row to pick a device, or type a width/height.
 3. `UA` switches to a mobile user agent (reloads once); `▣` draws a device frame; `Fit` scales the viewport into the panel.
-4. Press `⊕` to start picking: hover highlights the element, click references it; `Esc` exits.
-5. The composer is focused automatically and a chip appears above it; the editor gets one compact line:
+4. Press `⊕` to start picking: hover highlights the element; clicking outlines it in blue and opens an **annotation card** that follows the element.
+5. Type the change ("make the corners smaller") and press `Enter` or `→`; `Esc` / `×` cancels. The composer is focused and a chip appears above it, while the editor gets one compact line:
 
 ```
 ⟦元素1⟧ · <button#submit.btn.primary>「提交订单」 · localhost:5173/checkout · 120×40 · src/components/checkout.tsx
