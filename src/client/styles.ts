@@ -20,6 +20,7 @@ export const CSS = `
 .dbs-iconBtn:hover:not(:disabled) { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .dbs-iconBtn:active:not(:disabled) { background: var(--dsw-alias-bg-layer-3); }
 .dbs-iconBtn:disabled { opacity: .35; cursor: default; }
+.dbs-addrBox { position: relative; flex: 1 1 auto; min-width: 80px; display: flex; }
 .dbs-addrWrap {
   flex: 1 1 auto; min-width: 80px; height: 32px; display: flex; align-items: center; gap: 7px;
   padding: 0 8px 0 10px; border-radius: 9px;

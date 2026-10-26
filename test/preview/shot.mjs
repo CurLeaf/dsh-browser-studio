@@ -27,6 +27,7 @@ const shots = [
   { name: 'frame-320', width: 320, query: '?preset=iphone-15&frame=1', menu: false },
   { name: 'start-380', width: 380, query: '?url=', menu: false },
   { name: 'start-320', width: 320, query: '?url=', menu: false },
+  { name: 'start-620', width: 620, query: '?url=', menu: false },
 ]
 for (const shot of shots) {
   const page = await browser.newPage({ viewport: { width: shot.width + 40, height: 820 }, deviceScaleFactor: 2 })

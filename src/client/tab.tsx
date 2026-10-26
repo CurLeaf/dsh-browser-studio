@@ -1091,6 +1091,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             ...(responsive
               ? { width: '100%', height: '100%' }
               : { width: Math.max(1, size.w * scale) + frameBorder, height: Math.max(1, size.h * scale) + frameBorder }),
+            visibility: showStart ? 'hidden' : 'visible',
           }}
         >
           {device.frame && frameAllowed && !responsive && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
