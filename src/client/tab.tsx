@@ -768,6 +768,11 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         ? anchor.top + anchor.h + 10
         : Math.max(8, anchor.top - POP_H - 10)
 
+  const recentHosts = recents.slice(0, 2).map((url) => url.replace(/^https?:\/\//, '').replace(/\/$/, ''))
+  const startLinks = [...recentHosts, 'localhost:5173', 'localhost:3000']
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .slice(0, 2)
+
   const statusParts = [formatSize(size.w, size.h)]
   statusParts.push(`${Math.round(scale * 100)}%`)
   statusParts.push(device.uaMobile ? t('status.uaMobile') : t('status.uaDesktop'))
@@ -775,6 +780,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   return (
     <div className="dbs-root">
       {/* address bar */}
+      {!showStart ? (
       <div className="dbs-bar">
         <div className="dbs-nav">
           <button
@@ -840,8 +846,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           <IconExternal />
         </button>
       </div>
+      ) : null}
 
       {/* device bar */}
+      {!showStart ? (
       <div className="dbs-deviceBar">
         <button
           ref={deviceBtnRef}
@@ -988,6 +996,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           </div>
         ) : null}
       </div>
+      ) : null}
 
       {/* viewport */}
       <div className="dbs-viewport" ref={viewportRef} data-responsive={responsive}>
@@ -1077,11 +1086,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           <div className="dbs-start">
             <div className="dbs-startCard">
               <div className="dbs-startArt">
-                <IconGlobe size={26} />
+                <IconGlobe size={22} />
               </div>
               <div className="dbs-startTitle">{t('start.title')}</div>
-              <p className="dbs-startSub">{t('start.sub')}</p>
-
               <form
                 className="dbs-startForm"
                 onSubmit={(event) => {
@@ -1089,7 +1096,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
                   navigate(emptyAddress)
                 }}
               >
-                <IconGlobe size={14} />
                 <input
                   className="dbs-startInput"
                   value={emptyAddress}
@@ -1102,31 +1108,15 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
                   <IconArrowRight />
                 </button>
               </form>
-
-              {recents.length > 0 ? (
-                <div className="dbs-startSection">
-                  <span className="dbs-startLabel">{t('start.recent')}</span>
-                  <div className="dbs-recentList">
-                    {recents.slice(0, 3).map((url) => (
-                      <button key={url} className="dbs-recentRow" title={url} onClick={() => navigate(url)}>
-                        <IconClock />
-                        <span className="dbs-recentUrl">{url.replace(/^https?:\/\//, '')}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="dbs-startSection">
-                <span className="dbs-startLabel">{t('start.quick')}</span>
-                <div className="dbs-startChips">
-                  {['localhost:3000', 'localhost:5173', 'localhost:8080', 'localhost:9000'].map((host) => (
-                    <button key={host} className="dbs-startChip" onClick={() => navigate(host)}>
+              {startLinks.length > 0 ? (
+                <div className="dbs-startLinks">
+                  {startLinks.map((host) => (
+                    <button key={host} className="dbs-startLink" onClick={() => navigate(host)}>
                       {host}
                     </button>
                   ))}
                 </div>
-              </div>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1155,6 +1145,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       </div>
 
       {/* status */}
+      {!showStart ? (
       <div className="dbs-status">
         <span>
           {statusParts.map((part, index) => (
@@ -1166,6 +1157,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         </span>
         <span>{count > 0 ? t('status.refs').replace('%n', String(count)) : ''}</span>
       </div>
+      ) : null}
     </div>
   )
 }
