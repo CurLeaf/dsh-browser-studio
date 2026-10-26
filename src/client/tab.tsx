@@ -218,8 +218,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [hostReady, setHostReady] = React.useState(false)
   const [pendingPick, setPendingPick] = React.useState<ElementRef | null>(null)
   const [note, setNote] = React.useState('')
-  const [emptyAddress, setEmptyAddress] = React.useState('')
   const [recents, setRecents] = React.useState<string[]>(() => readJson<string[]>('recent', []))
+  const [suggestOpen, setSuggestOpen] = React.useState(false)
+  const [suggestIndex, setSuggestIndex] = React.useState(-1)
+  const addressRef = React.useRef<HTMLInputElement | null>(null)
   const [anchor, setAnchor] = React.useState<{ left: number; top: number; w: number; h: number } | null>(null)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
@@ -304,6 +306,40 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     pendingUrlRef.current = initial
     if (!isDesktop) setIframeUrl(initial)
   }, [])
+
+  React.useEffect(() => {
+    if (currentUrl !== '') return undefined
+    const timer = window.setTimeout(() => addressRef.current?.focus(), 60)
+    return () => window.clearTimeout(timer)
+  }, [currentUrl])
+
+  const suggestions = React.useMemo(() => {
+    if (!suggestOpen) return [] as Array<{ value: string; label: string; kind: 'open' | 'history' }>
+    const query = address.trim()
+    const items: Array<{ value: string; label: string; kind: 'open' | 'history' }> = []
+    const normalized = query === '' ? '' : normalizeUrl(query)
+    if (normalized !== '' && !recents.includes(normalized)) {
+      items.push({ value: normalized, label: normalized.replace(/^https?:\/\//, ''), kind: 'open' })
+    }
+    const needle = query.toLowerCase()
+    for (const url of recents) {
+      if (needle !== '' && !url.toLowerCase().includes(needle)) continue
+      items.push({ value: url, label: url.replace(/^https?:\/\//, ''), kind: 'history' })
+      if (items.length >= 6) break
+    }
+    if (items.length === 0 && query === '') {
+      for (const url of ['http://localhost:5173', 'http://localhost:3000']) {
+        items.push({ value: url, label: url.replace(/^https?:\/\//, ''), kind: 'history' })
+      }
+    }
+    return items.slice(0, 6)
+  }, [suggestOpen, address, recents])
+
+  const chooseSuggestion = (value: string): void => {
+    setSuggestOpen(false)
+    setSuggestIndex(-1)
+    navigate(value)
+  }
 
   const syncPins = React.useCallback(() => {
     const el = webviewRef.current
@@ -650,7 +686,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
     setAddress(url)
     setCurrentUrl(url)
-    setEmptyAddress('')
     setLoadError('')
     writeJson('url.' + sessionId + '.' + tabId, url)
     setRecents((previous) => {
@@ -780,7 +815,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   return (
     <div className="dbs-root">
       {/* address bar */}
-      {!showStart ? (
       <div className="dbs-bar">
         <div className="dbs-nav">
           <button
@@ -818,6 +852,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           </button>
         </div>
 
+        <div className="dbs-addrBox">
         <form
           className="dbs-addrWrap"
           onSubmit={(event) => {
@@ -829,11 +864,36 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             <IconGlobe size={14} />
           </span>
           <input
+            ref={addressRef}
             className="dbs-addr"
             value={address}
             placeholder={t('address.placeholder')}
             spellCheck={false}
-            onChange={(event) => setAddress(event.target.value)}
+            onFocus={() => setSuggestOpen(true)}
+            onBlur={() => {
+              window.setTimeout(() => setSuggestOpen(false), 120)
+            }}
+            onChange={(event) => {
+              setAddress(event.target.value)
+              setSuggestOpen(true)
+              setSuggestIndex(-1)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                setSuggestOpen(true)
+                setSuggestIndex((index) => Math.min(index + 1, suggestions.length - 1))
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                setSuggestIndex((index) => Math.max(index - 1, -1))
+              } else if (event.key === 'Escape') {
+                setSuggestOpen(false)
+                setSuggestIndex(-1)
+              } else if (event.key === 'Enter' && suggestIndex >= 0 && suggestions[suggestIndex] !== undefined) {
+                event.preventDefault()
+                chooseSuggestion(suggestions[suggestIndex].value)
+              }
+            }}
           />
           {dirty ? (
             <button className="dbs-go" type="submit" title={t('address.go')} aria-label={t('address.go')}>
@@ -842,11 +902,35 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           ) : null}
         </form>
 
+        {suggestOpen && suggestions.length > 0 ? (
+          <div className="dbs-suggest" role="listbox">
+            {suggestions.map((item, index) => (
+              <button
+                key={`${item.kind}:${item.value}`}
+                className="dbs-suggestRow"
+                data-active={index === suggestIndex}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  chooseSuggestion(item.value)
+                }}
+                onMouseEnter={() => setSuggestIndex(index)}
+              >
+                <span className="dbs-suggestIcon">
+                  {item.kind === 'history' ? <IconClock /> : <IconGlobe size={12} />}
+                </span>
+                <span className="dbs-suggestLabel">{item.label}</span>
+                {item.kind === 'open' ? <span className="dbs-suggestHint">{t('suggest.open')}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        </div>
+
         <button className="dbs-iconBtn" title={t('toolbar.external')} aria-label={t('toolbar.external')} onClick={openExternal}>
           <IconExternal />
         </button>
+
       </div>
-      ) : null}
 
       {/* device bar */}
       {!showStart ? (
@@ -1083,41 +1167,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         ) : null}
 
         {showStart ? (
-          <div className="dbs-start">
-            <div className="dbs-startCard">
-              <div className="dbs-startArt">
-                <IconGlobe size={22} />
-              </div>
-              <div className="dbs-startTitle">{t('start.title')}</div>
-              <form
-                className="dbs-startForm"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  navigate(emptyAddress)
-                }}
-              >
-                <input
-                  className="dbs-startInput"
-                  value={emptyAddress}
-                  placeholder={t('start.placeholder')}
-                  spellCheck={false}
-                  autoFocus
-                  onChange={(event) => setEmptyAddress(event.target.value)}
-                />
-                <button className="dbs-startGo" type="submit" aria-label={t('start.open')} title={t('start.open')}>
-                  <IconArrowRight />
-                </button>
-              </form>
-              {startLinks.length > 0 ? (
-                <div className="dbs-startLinks">
-                  {startLinks.map((host) => (
-                    <button key={host} className="dbs-startLink" onClick={() => navigate(host)}>
-                      {host}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+          <div className="dbs-empty">
+            <IconGlobe size={18} />
+            <span>{t('start.hint')}</span>
           </div>
         ) : null}
 

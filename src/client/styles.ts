@@ -8,7 +8,7 @@ export const CSS = `
 
 /* ---------------------------------------------------------------- address bar */
 .dbs-bar {
-  display: flex; align-items: center; gap: 6px;
+  position: relative; display: flex; align-items: center; gap: 6px;
   padding: 8px 10px 6px; flex: none;
 }
 .dbs-nav { display: flex; align-items: center; gap: 1px; flex: none; }
@@ -184,42 +184,32 @@ export const CSS = `
 }
 .dbs-status span { overflow: hidden; text-overflow: ellipsis; }
 .dbs-status .dbs-dot { opacity: .45; margin: 0 4px; }
-.dbs-start {
-  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
-  padding: 24px 20px; pointer-events: none; background: var(--dsw-alias-bg-layer-1);
+.dbs-empty {
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px;
+  align-items: center; justify-content: center; pointer-events: none;
+  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-tertiary); font-size: 12px;
 }
-.dbs-startCard {
-  width: 100%; max-width: 300px; display: flex; flex-direction: column; align-items: center; gap: 12px;
-  pointer-events: auto;
+.dbs-suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
+  padding: 4px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 14px 34px rgba(0,0,0,.34), 0 2px 6px rgba(0,0,0,.18);
+  max-height: 264px; overflow: auto;
 }
-.dbs-startArt { display: flex; color: var(--dsw-alias-label-tertiary); opacity: .8; }
-.dbs-startTitle { font-size: 13.5px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
-.dbs-startForm {
-  width: 100%; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 5px 0 12px;
-  border-radius: 9px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+.dbs-suggestRow {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+  border: 0; border-radius: 7px; background: transparent; cursor: pointer; text-align: left;
+  color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px;
 }
-.dbs-startForm:focus-within {
-  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 50%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 10%, transparent);
+.dbs-suggestRow[data-active="true"], .dbs-suggestRow:hover {
+  background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary);
 }
-.dbs-startInput {
-  flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0;
-  background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12.5px;
+.dbs-suggestIcon { flex: none; display: inline-flex; color: var(--dsw-alias-label-tertiary); }
+.dbs-suggestLabel {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
 }
-.dbs-startInput::placeholder { color: var(--dsw-alias-label-tertiary); }
-.dbs-startGo {
-  flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px;
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
-  background: transparent; color: var(--dsw-alias-label-tertiary);
-}
-.dbs-startGo:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
-.dbs-startLinks { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
-.dbs-startLink {
-  padding: 2px 5px; border: 0; border-radius: 5px; background: transparent; cursor: pointer;
-  color: var(--dsw-alias-label-tertiary); font: inherit; font-size: 11.5px;
-}
-.dbs-startLink:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
+.dbs-suggestHint { flex: none; font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
 .dbs-error {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
   max-width: 340px; padding: 12px 14px; border-radius: 11px; text-align: center;
