@@ -114,6 +114,12 @@ const IconLink = (): React.ReactElement => (
     <path d="M8.6 10.9 7.2 12.3a2.5 2.5 0 0 1-3.5-3.5l1.4-1.4" />
   </Svg>
 )
+const IconClock = (): React.ReactElement => (
+  <Svg size={13}>
+    <circle cx="8" cy="8" r="5.4" />
+    <path d="M8 4.8V8l2.2 1.4" />
+  </Svg>
+)
 const IconChevron = (): React.ReactElement => (
   <Svg size={12}><path d="M4 6.5 8 10 12 6.5" /></Svg>
 )
@@ -212,6 +218,8 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [hostReady, setHostReady] = React.useState(false)
   const [pendingPick, setPendingPick] = React.useState<ElementRef | null>(null)
   const [note, setNote] = React.useState('')
+  const [emptyAddress, setEmptyAddress] = React.useState('')
+  const [recents, setRecents] = React.useState<string[]>(() => readJson<string[]>('recent', []))
   const [anchor, setAnchor] = React.useState<{ left: number; top: number; w: number; h: number } | null>(null)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
@@ -642,8 +650,14 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
     setAddress(url)
     setCurrentUrl(url)
+    setEmptyAddress('')
     setLoadError('')
     writeJson('url.' + sessionId + '.' + tabId, url)
+    setRecents((previous) => {
+      const next = [url, ...previous.filter((item) => item !== url)].slice(0, 6)
+      writeJson('recent', next)
+      return next
+    })
     if (!isDesktop) {
       setIframeUrl(url)
       return
@@ -1061,11 +1075,59 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
 
         {showStart ? (
           <div className="dbs-start">
-            <div className="dbs-startIcon">
-              <IconGlobe size={22} />
+            <div className="dbs-startCard">
+              <div className="dbs-startArt">
+                <IconGlobe size={26} />
+              </div>
+              <div className="dbs-startTitle">{t('start.title')}</div>
+              <p className="dbs-startSub">{t('start.sub')}</p>
+
+              <form
+                className="dbs-startForm"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  navigate(emptyAddress)
+                }}
+              >
+                <IconGlobe size={14} />
+                <input
+                  className="dbs-startInput"
+                  value={emptyAddress}
+                  placeholder={t('start.placeholder')}
+                  spellCheck={false}
+                  autoFocus
+                  onChange={(event) => setEmptyAddress(event.target.value)}
+                />
+                <button className="dbs-startGo" type="submit" aria-label={t('start.open')} title={t('start.open')}>
+                  <IconArrowRight />
+                </button>
+              </form>
+
+              {recents.length > 0 ? (
+                <div className="dbs-startSection">
+                  <span className="dbs-startLabel">{t('start.recent')}</span>
+                  <div className="dbs-recentList">
+                    {recents.slice(0, 3).map((url) => (
+                      <button key={url} className="dbs-recentRow" title={url} onClick={() => navigate(url)}>
+                        <IconClock />
+                        <span className="dbs-recentUrl">{url.replace(/^https?:\/\//, '')}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="dbs-startSection">
+                <span className="dbs-startLabel">{t('start.quick')}</span>
+                <div className="dbs-startChips">
+                  {['localhost:3000', 'localhost:5173', 'localhost:8080', 'localhost:9000'].map((host) => (
+                    <button key={host} className="dbs-startChip" onClick={() => navigate(host)}>
+                      {host}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <b>{t('hint.start')}</b>
-            <small>{t('hint.startSub')}</small>
           </div>
         ) : null}
 

@@ -185,18 +185,69 @@ export const CSS = `
 .dbs-status span { overflow: hidden; text-overflow: ellipsis; }
 .dbs-status .dbs-dot { opacity: .45; margin: 0 4px; }
 .dbs-start {
-  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 10px;
-  background: var(--dsw-alias-bg-layer-1);
-  align-items: center; justify-content: center; padding: 28px; text-align: center;
-  color: var(--dsw-alias-label-secondary); pointer-events: none;
+  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
+  padding: 24px 18px; overflow: auto; pointer-events: none;
+  background:
+    radial-gradient(130% 70% at 50% 8%, color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 12%, transparent), transparent 62%),
+    radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px) 0 0 / 16px 16px,
+    var(--dsw-alias-bg-layer-1);
 }
-.dbs-startIcon {
-  width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+.dbs-startCard {
+  width: 100%; max-width: 312px; display: flex; flex-direction: column; gap: 14px; pointer-events: auto;
+}
+.dbs-startArt {
+  width: 54px; height: 54px; margin: 0 auto 2px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--dsw-alias-brand-primary, #2f6fed);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 12%, var(--dsw-alias-bg-layer-2));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 32%, transparent);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 16%, transparent);
+}
+.dbs-startTitle { text-align: center; font-size: 15px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dbs-startSub { margin: 0; text-align: center; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-tertiary); }
+.dbs-startForm {
+  display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 6px 0 11px;
+  border-radius: 10px; border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-tertiary);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.dbs-startForm:focus-within {
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 12%, transparent);
+}
+.dbs-startInput {
+  flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0;
+  background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12.5px;
+}
+.dbs-startInput::placeholder { color: var(--dsw-alias-label-tertiary); }
+.dbs-startGo {
+  flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 16%, transparent);
+  color: var(--dsw-alias-brand-primary, #2f6fed); transition: background 120ms ease;
+}
+.dbs-startGo:hover { background: color-mix(in srgb, var(--dsw-alias-brand-primary, #2f6fed) 28%, transparent); }
+.dbs-startSection { display: flex; flex-direction: column; gap: 6px; }
+.dbs-startLabel { padding: 0 2px; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.dbs-startChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dbs-startChip {
+  height: 26px; padding: 0 9px; border-radius: 7px; cursor: pointer;
   border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11.5px;
 }
-.dbs-start b { font-size: 14px; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.dbs-start small { font-size: 12px; color: var(--dsw-alias-label-tertiary); max-width: 320px; line-height: 1.55; }
+.dbs-startChip:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
+.dbs-recentList { display: flex; flex-direction: column; gap: 1px; }
+.dbs-recentRow {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px;
+  border: 0; border-radius: 7px; background: transparent; cursor: pointer; text-align: left;
+  color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px;
+}
+.dbs-recentRow:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+.dbs-recentRow svg { flex: none; opacity: .55; }
+.dbs-recentUrl {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+}
 .dbs-error {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
   max-width: 340px; padding: 12px 14px; border-radius: 11px; text-align: center;

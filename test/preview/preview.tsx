@@ -9,6 +9,13 @@ const t = (key: string): string => ZH[key] ?? key
 const params = new URLSearchParams(location.search)
 const url = params.get('url') ?? 'http://127.0.0.1:4199/demo.html'
 
+if (localStorage.getItem('dsh.browser-studio.v1.recent') === null) {
+  localStorage.setItem(
+    'dsh.browser-studio.v1.recent',
+    JSON.stringify(['http://localhost:9000/mall', 'http://localhost:5173/']),
+  )
+}
+
 const presetId = params.get('preset')
 const preset = presetId === null ? undefined : PRESET_BY_ID.get(presetId)
 if (preset !== undefined) {
