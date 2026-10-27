@@ -22,7 +22,7 @@
 
 父页面读不到跨域 iframe。换个方向：把页面 agent 引入被预览的应用，让它住在页面里画高亮，再通过 `postMessage` 和工作室通信。
 
-加载器不写死地址：它从 `document.referrer` 读取工作室的源，所以同一段代码在任何机器、任何端口都能用。`data-dsh-origin` 只是页面剥离 referrer 时的兜底。
+加载器不写死地址：它从祖先窗口（`location.ancestorOrigins`）或 `document.referrer` 读取工作室的源，所以同一段代码在任何机器、任何端口都能用。`data-dsh-origin` 只是页面剥离 referrer 时的兜底。
 
 ```html
 <script data-dsh-origin="http://127.0.0.1:3080">

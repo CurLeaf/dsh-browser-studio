@@ -5,7 +5,7 @@ import {
   applyPreset, clamp, computeScale, DEFAULT_DEVICE, formatSize, isLandscape, normalizeUrl, presetFor,
   viewportSize, ZOOM_STEPS, type DeviceState,
 } from './device'
-import { addPendingRef, appendComposerLine, buildBlock, elementLabel, focusComposer } from './bridge'
+import { addPendingRef, appendComposerLine, buildBlock, elementLabel, focusComposer, listPendingRefs, publishRefs } from './bridge'
 import { createWebAgent, type WebAgent } from './web-agent'
 import { agentSnippet } from '../shared/agent-loader'
 import {
@@ -738,6 +738,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     const meta = { deviceLabel: label, uaMobile: d.uaMobile, locale: localeRef.current }
     const detail = buildBlock(ref, n, meta, text)
     addPendingRef(sessionId, { n, label: elementLabel(ref), note: text, detail })
+    // Publish before the composer can be sent: the host injects these on the next
+    // step, and a fast Enter would otherwise race the dock's effect.
+    void publishRefs(sessionId, listPendingRefs(sessionId).map((item) => item.detail))
     // The dock publishes the chip list to the host; the visible reference keeps
     // the sent message honest about what travels with it.
     focusComposer(true)
@@ -1306,7 +1309,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     '方式二（Vite 项目）：在 vite.config 里加：',
     viteSnippet,
     '',
-    `说明：脚本会从 document.referrer 读取 Studio 的源，不需要写死 IP/端口（当前这台机器是 ${studioOrigin}）；只在开发环境生效；如果 CSP 禁止内联/跨域脚本，把 lib/agent.js 放到项目同源目录再引用。完成后打开 DSH 内置浏览器预览该页面，拾取按钮应变蓝可用。`,
+    `说明：脚本会从 location.ancestorOrigins / document.referrer 读取 Studio 的源，不需要写死 IP/端口（当前这台机器是 ${studioOrigin}）；只在开发环境生效；如果 CSP 禁止内联/跨域脚本，把 lib/agent.js 放到项目同源目录再引用。完成后打开 DSH 内置浏览器预览该页面，拾取按钮应变蓝可用。`,
   ].join('\n')
 
   const copyText = (text: string): void => {

@@ -22,7 +22,7 @@ Turn the DeepSeek Harness built-in browser into a browser studio: **preview at d
 
 The parent page cannot read a cross-origin iframe. Load the page agent in the previewed app instead; the agent lives in the page, draws the highlights, and talks to the studio over `postMessage`.
 
-The loader is origin-agnostic: it reads the studio origin from `document.referrer`, so the same snippet works on every machine and port. `data-dsh-origin` is only a fallback for pages that strip their referrer.
+The loader is origin-agnostic: it reads the studio origin from the ancestor window (`location.ancestorOrigins`) or `document.referrer`, so the same snippet works on every machine and port. `data-dsh-origin` is only a fallback for pages that strip their referrer.
 
 ```html
 <script data-dsh-origin="http://127.0.0.1:3080">

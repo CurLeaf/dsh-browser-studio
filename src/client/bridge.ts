@@ -183,10 +183,11 @@ export function focusComposer(toEnd = false): void {
 export function appendComposerLine(line: string): boolean {
   if (typeof document === 'undefined') return false
   const active = document.activeElement
-  const editor =
+  const focused =
     active instanceof HTMLElement && active.isContentEditable
-      ? active
-      : document.querySelector('[contenteditable="true"]')
+      ? active.closest('[contenteditable="true"]')
+      : null
+  const editor = focused ?? document.querySelector('[contenteditable="true"]')
   if (!(editor instanceof HTMLElement)) return false
   editor.focus()
   const selection = window.getSelection()
@@ -196,21 +197,49 @@ export function appendComposerLine(line: string): boolean {
   range.collapse(false)
   selection.removeAllRanges()
   selection.addRange(range)
-  const text = (editor.innerText ?? '').trimEnd()
-  const prefix = text === '' || text.endsWith('\n') ? '' : '\n'
-  return document.execCommand('insertText', false, `${prefix}${line}`)
+  const before = (editor.innerText ?? '').trimEnd()
+  const prefix = before === '' || before.endsWith('\n') ? '' : '\n'
+  const text = `${prefix}${line}`
+  try {
+    if (document.execCommand('insertText', false, text) && (editor.innerText ?? '').includes(line)) {
+      return true
+    }
+  } catch {
+    /* fall through to the paste path */
+  }
+  // Lexical also commits synthetic paste input; used when execCommand is refused.
+  try {
+    const data = new DataTransfer()
+    data.setData('text/plain', text)
+    editor.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+    )
+    return (editor.innerText ?? '').includes(line)
+  } catch {
+    return false
+  }
 }
 
 /** Post the current element details to the host; the next agent step injects them. */
 export function publishRefs(sessionId: string, blocks: string[]): void {
   if (typeof fetch !== 'function' || sessionId === '') return
-  try {
-    void fetch('/browser-studio/api/refs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId, blocks }),
-    }).catch(() => {})
-  } catch {
-    /* the host route is optional; the chips still work */
+  const send = (attempt: number): void => {
+    try {
+      fetch('/browser-studio/api/refs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, blocks }),
+        keepalive: true,
+      })
+        .then((response) => {
+          if (!response.ok && attempt < 1) window.setTimeout(() => send(attempt + 1), 300)
+        })
+        .catch(() => {
+          if (attempt < 1) window.setTimeout(() => send(attempt + 1), 300)
+        })
+    } catch {
+      /* the host route is optional; the chips still work */
+    }
   }
+  send(0)
 }
