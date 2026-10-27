@@ -1,8 +1,8 @@
+import { AGENT_LOADER, AGENT_PATH } from '../shared/agent-loader'
+
 export interface DshStudioAgentOptions {
-  /** Origin of the DSH host. Defaults to DSH_STUDIO_URL, then loopback 3080. */
+  /** Direct studio origin; skips the referrer-derived loader when set. */
   origin?: string
-  /** Path of the served page agent. Defaults to /browser-studio/agent.js. */
-  path?: string
 }
 
 /**
@@ -14,20 +14,19 @@ export interface DshStudioPlugin {
   apply: 'serve'
   transformIndexHtml(html: string): string | Array<{
     tag: 'script'
-    attrs: { src: string; defer: true }
+    attrs?: Record<string, string | boolean>
+    children?: string
     injectTo: 'head'
   }>
 }
 
-const DEFAULT_ORIGIN = 'http://127.0.0.1:3080'
-const DEFAULT_PATH = '/browser-studio/agent.js'
-
 /**
  * Injects the dsh-browser-studio page agent into the dev HTML.
  *
- * The Web preview is a cross-origin iframe, so the picker has to run inside the
- * page. The agent is served by the DSH host; this plugin only adds the script in
- * `vite dev` — `apply: 'serve'` keeps production builds untouched.
+ * By default it injects a tiny loader that derives the studio origin from
+ * `document.referrer`, so the same config works on every machine and port.
+ * Pass `origin` (or set DSH_STUDIO_URL) to inject a direct script instead —
+ * useful when the page strips its referrer.
  *
  * ```ts
  * import dshStudioAgent from 'dsh-browser-studio/vite'
@@ -36,16 +35,18 @@ const DEFAULT_PATH = '/browser-studio/agent.js'
  */
 export default function dshStudioAgent(options: DshStudioAgentOptions = {}): DshStudioPlugin {
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-  const origin = (options.origin ?? env?.DSH_STUDIO_URL ?? DEFAULT_ORIGIN).replace(/\/+$/, '')
-  const path = options.path ?? DEFAULT_PATH
-  const src = `${origin}${path.startsWith('/') ? path : `/${path}`}`
+  const origin = (options.origin ?? env?.DSH_STUDIO_URL ?? '').replace(/\/+$/, '')
+  const direct = origin === '' ? '' : `${origin}${AGENT_PATH}`
 
   return {
     name: 'dsh-browser-studio:agent',
     apply: 'serve',
     transformIndexHtml(html: string) {
-      if (html.includes(src)) return html
-      return [{ tag: 'script', attrs: { src, defer: true }, injectTo: 'head' }]
+      if (html.includes(AGENT_PATH)) return html
+      if (direct !== '') {
+        return [{ tag: 'script', attrs: { src: direct, defer: true }, injectTo: 'head' }]
+      }
+      return [{ tag: 'script', children: AGENT_LOADER, injectTo: 'head' }]
     },
   }
 }

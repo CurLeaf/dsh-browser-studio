@@ -20,17 +20,31 @@ Turn the DeepSeek Harness built-in browser into a browser studio: **preview at d
 
 ### Picking in the Web build
 
-The parent page cannot read a cross-origin iframe. Load the page agent in the previewed app instead; the agent lives in the page, draws the highlights, and talks to the studio over `postMessage`:
+The parent page cannot read a cross-origin iframe. Load the page agent in the previewed app instead; the agent lives in the page, draws the highlights, and talks to the studio over `postMessage`.
+
+The loader is origin-agnostic: it reads the studio origin from `document.referrer`, so the same snippet works on every machine and port. `data-dsh-origin` is only a fallback for pages that strip their referrer.
 
 ```html
-<script src="http://127.0.0.1:3080/browser-studio/agent.js"></script>
+<script data-dsh-origin="http://127.0.0.1:3080">
+(function () {
+  var el = document.currentScript;
+  var ref = null;
+  try { ref = document.referrer ? new URL(document.referrer) : null; } catch (e) { ref = null; }
+  var origin = ref && ref.origin ? ref.origin : (el && el.getAttribute('data-dsh-origin')) || '';
+  if (!origin) return;
+  var s = document.createElement('script');
+  s.src = origin + '/browser-studio/agent.js';
+  s.defer = true;
+  document.head.appendChild(s);
+})();
+</script>
 ```
 
-The studio serves that bundle itself, so no extra install is needed. Dev-only; keep it out of production builds. If the app's CSP blocks cross-origin scripts, either allow the studio host in `script-src` or copy `lib/agent.js` into the app's public folder and serve it from the same origin.
+Dev-only; keep it out of production builds. If the app's CSP blocks inline or cross-origin scripts, host `lib/agent.js` from the same origin and point the loader there.
 
 ### Vite projects
 
-The injector ships as a Vite plugin, so the app's HTML stays untouched:
+The package ships the same loader as a Vite plugin, so the app's HTML stays untouched:
 
 ```ts
 // vite.config.ts
@@ -41,7 +55,7 @@ export default defineConfig({
 })
 ```
 
-`apply: 'serve'` keeps it out of production builds. Use another host with `dshStudioAgent({ origin: 'http://127.0.0.1:3081' })` or the `DSH_STUDIO_URL` environment variable.
+`apply: 'serve'` keeps it out of production builds. By default it injects the referrer loader; pass `dshStudioAgent({ origin: 'http://host:port' })` or set `DSH_STUDIO_URL` to inject a direct script when the page strips its referrer.
 
 ## Install
 

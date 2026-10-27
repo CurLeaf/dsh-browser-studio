@@ -7,6 +7,7 @@ import {
 } from './device'
 import { addPendingRef, appendComposerLine, buildBlock, elementLabel, focusComposer } from './bridge'
 import { createWebAgent, type WebAgent } from './web-agent'
+import { agentSnippet } from '../shared/agent-loader'
 import {
   clearHistory, historySnapshot, rememberVisit, subscribeHistory, updateHistoryTitle,
   type HistoryEntry,
@@ -396,6 +397,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [guideDrag, setGuideDrag] = React.useState<GuideDrag | null>(null)
   const [menuLeft, setMenuLeft] = React.useState(8)
   const [zoomOpen, setZoomOpen] = React.useState(false)
+  const [setupOpen, setSetupOpen] = React.useState(false)
   const [iframeUrl, setIframeUrl] = React.useState('')
   const [iframeKey, setIframeKey] = React.useState(0)
   const [agentReady, setAgentReady] = React.useState(false)
@@ -420,6 +422,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const sizeBtnRef = React.useRef<HTMLButtonElement | null>(null)
   const zoomBtnRef = React.useRef<HTMLButtonElement | null>(null)
   const zoomMenuRef = React.useRef<HTMLDivElement | null>(null)
+  const setupRef = React.useRef<HTMLDivElement | null>(null)
 
   React.useEffect(() => {
     if (workspaceKey !== undefined || workspaceFallback) return undefined
@@ -1022,6 +1025,25 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
   }, [menuOpen])
 
+  React.useEffect(() => {
+    if (!setupOpen) return undefined
+    const onPointer = (event: PointerEvent): void => {
+      const target = event.target as Node | null
+      if (target === null) return
+      if (setupRef.current?.contains(target) === true) return
+      setSetupOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setSetupOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [setupOpen])
+
   // The zoom menu follows the same rules as the other popovers.
   React.useEffect(() => {
     if (!zoomOpen) return undefined
@@ -1212,7 +1234,8 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
 
   const togglePick = (): void => {
     if (!canPick) {
-      showToast(isDesktop ? t('pick.notReady') : t('pick.needAgent'))
+      if (isDesktop) showToast(t('pick.notReady'))
+      else setSetupOpen(true)
       return
     }
     const next = !picking
@@ -1248,6 +1271,53 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const landscape = isLandscape(device, preset)
   const frameAllowed = preset !== null && (preset.group === 'phone' || preset.group === 'tablet')
   const frameBorder = device.frame && frameAllowed ? 16 : 0
+  const studioOrigin = typeof window === 'undefined' ? '' : window.location.origin
+  const htmlSnippet = agentSnippet({ origin: studioOrigin })
+  const viteSnippet = [
+    "import dshStudioAgent from 'dsh-browser-studio/vite'",
+    '',
+    'export default defineConfig({',
+    '  plugins: [dshStudioAgent()],',
+    '})',
+  ].join('\n')
+  const aiBrief = [
+    '请在这台设备上的项目里，为 dsh-browser-studio 的 Web 预览接入页面 agent（只改开发环境，不要带进生产构建）。',
+    '',
+    '背景：DSH 的 Web 预览是跨域 iframe，页面需要自己加载一个脚本，Studio 才能点选元素。',
+    '',
+    '方式一（任意项目）：把下面这段放到 dev server 返回的 HTML 的 <head> 里：',
+    htmlSnippet,
+    '',
+    '方式二（Vite 项目）：在 vite.config 里加：',
+    viteSnippet,
+    '',
+    `说明：脚本会从 document.referrer 读取 Studio 的源，不需要写死 IP/端口（当前这台机器是 ${studioOrigin}）；只在开发环境生效；如果 CSP 禁止内联/跨域脚本，把 lib/agent.js 放到项目同源目录再引用。完成后打开 DSH 内置浏览器预览该页面，拾取按钮应变蓝可用。`,
+  ].join('\n')
+
+  const copyText = (text: string): void => {
+    const done = (): void => showToast(t('setup.copied'))
+    const fallback = (): void => {
+      try {
+        const area = document.createElement('textarea')
+        area.value = text
+        area.style.position = 'fixed'
+        area.style.opacity = '0'
+        document.body.appendChild(area)
+        area.select()
+        document.execCommand('copy')
+        area.remove()
+        done()
+      } catch {
+        showToast(t('setup.copyFailed'))
+      }
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText !== undefined) {
+      navigator.clipboard.writeText(text).then(done, fallback)
+      return
+    }
+    fallback()
+  }
+
   const deviceLabel =
     preset === null
       ? responsive
@@ -1686,6 +1756,45 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           </div>
         ) : null}
 
+        {setupOpen ? (
+          <div className="dbs-setup" ref={setupRef} role="dialog" aria-label={t('setup.title')}>
+            <div className="dbs-setupHead">
+              <span>{t('setup.title')}</span>
+              <button
+                type="button"
+                className="dbs-setupClose"
+                aria-label={t('setup.close')}
+                title={t('setup.close')}
+                onClick={() => setSetupOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <p>{t('setup.body')}</p>
+            <div className="dbs-setupLabel">{t('setup.html')}</div>
+            <pre className="dbs-setupCode">{htmlSnippet}</pre>
+            <div className="dbs-setupRow">
+              <button type="button" className="dbs-setupBtn" onClick={() => copyText(htmlSnippet)}>
+                {t('setup.copy')}
+              </button>
+            </div>
+            <div className="dbs-setupLabel">{t('setup.vite')}</div>
+            <pre className="dbs-setupCode">{viteSnippet}</pre>
+            <div className="dbs-setupRow">
+              <button type="button" className="dbs-setupBtn" onClick={() => copyText(viteSnippet)}>
+                {t('setup.copy')}
+              </button>
+              <button
+                type="button"
+                className="dbs-setupBtn dbs-setupBtnPrimary"
+                onClick={() => copyText(aiBrief)}
+              >
+                {t('setup.copyAi')}
+              </button>
+            </div>
+            <p className="dbs-setupNote">{t('setup.note')}</p>
+          </div>
+        ) : null}
       </div>
 
       {showSizeBar ? (
@@ -1845,7 +1954,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
                 }}
                 title={t('tab.title')}
                 sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-                referrerPolicy="no-referrer"
+                referrerPolicy="strict-origin-when-cross-origin"
               />
             ) : null}
           </div>

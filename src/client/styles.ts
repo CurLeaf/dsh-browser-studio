@@ -433,6 +433,37 @@ export const CSS = `
   background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary);
   border: 1px solid var(--dsw-alias-border-l2); z-index: 5;
 }
+.dbs-setup {
+  position: absolute; top: calc(100% + 8px); right: 8px; z-index: 60;
+  width: min(440px, calc(100% - 16px)); max-height: 70vh; overflow: auto;
+  padding: 12px; border-radius: 12px; border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary);
+  box-shadow: 0 18px 40px rgba(0,0,0,.34); font-size: 12px; line-height: 1.6;
+}
+.dbs-setupHead { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.dbs-setupClose {
+  margin-left: auto; width: 22px; height: 22px; border: 0; border-radius: 6px;
+  background: transparent; color: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+}
+.dbs-setupClose:hover { background: var(--dsw-alias-bg-layer-3); }
+.dbs-setup p { margin: 6px 0 10px; color: var(--dsw-alias-label-secondary); }
+.dbs-setupLabel { margin-top: 10px; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.dbs-setupCode {
+  margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; max-height: 150px; overflow: auto;
+  background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word;
+}
+.dbs-setupRow { display: flex; gap: 8px; margin-top: 8px; }
+.dbs-setupBtn {
+  height: 26px; padding: 0 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary); font: inherit; font-size: 11.5px;
+}
+.dbs-setupBtn:hover { background: var(--dsw-alias-bg-layer-3); }
+.dbs-setupBtnPrimary { border-color: transparent; background: var(--dbs-accent); color: #fff; }
+.dbs-setupBtnPrimary:hover { background: color-mix(in srgb, var(--dbs-accent) 85%, black); }
+.dbs-setupNote { margin: 10px 0 0; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+
 /* ---------------------------------------------------------------- ref chips */
 .dbs-refs {
   display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 8px;

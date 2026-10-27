@@ -292,6 +292,21 @@ describe('browser tab mounting', () => {
     await waitFor(() => expect(container.querySelector('.dbs-sizeBar')).toBeNull())
   })
 
+  it('offers the agent setup snippet when the page has no bridge', async () => {
+    const { container } = render(React.createElement(BrowserBody, props()))
+    const form = container.querySelector('.dbs-addrWrap') as HTMLFormElement
+    const address = container.querySelector('.dbs-addr') as HTMLInputElement
+    fireEvent.change(address, { target: { value: 'localhost:9000/plain' } })
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(container.querySelector('.dbs-toolBtn')).not.toBeNull())
+    fireEvent.click(container.querySelector('.dbs-toolBtn') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelector('.dbs-setup')).not.toBeNull())
+    const code = container.querySelector('.dbs-setupCode') as HTMLElement
+    expect(code.textContent).toContain('/browser-studio/agent.js')
+    expect(code.textContent).toContain('document.referrer')
+  })
+
   it('keeps picking disabled until a page agent handshakes', async () => {
     const { container } = render(React.createElement(BrowserBody, props()))
     const form = container.querySelector('.dbs-addrWrap') as HTMLFormElement

@@ -20,13 +20,27 @@
 
 ### Web 版的点选
 
-父页面读不到跨域 iframe。换个方向：把页面 agent 引入被预览的应用，让它住在页面里画高亮，再通过 `postMessage` 和工作室通信：
+父页面读不到跨域 iframe。换个方向：把页面 agent 引入被预览的应用，让它住在页面里画高亮，再通过 `postMessage` 和工作室通信。
+
+加载器不写死地址：它从 `document.referrer` 读取工作室的源，所以同一段代码在任何机器、任何端口都能用。`data-dsh-origin` 只是页面剥离 referrer 时的兜底。
 
 ```html
-<script src="http://127.0.0.1:3080/browser-studio/agent.js"></script>
+<script data-dsh-origin="http://127.0.0.1:3080">
+(function () {
+  var el = document.currentScript;
+  var ref = null;
+  try { ref = document.referrer ? new URL(document.referrer) : null; } catch (e) { ref = null; }
+  var origin = ref && ref.origin ? ref.origin : (el && el.getAttribute('data-dsh-origin')) || '';
+  if (!origin) return;
+  var s = document.createElement('script');
+  s.src = origin + '/browser-studio/agent.js';
+  s.defer = true;
+  document.head.appendChild(s);
+})();
+</script>
 ```
 
-这个 bundle 由工作室自己托管，不用额外安装。只在开发环境引入，别带进生产构建。如果页面的 CSP 禁止跨域脚本，要么在 `script-src` 里放行工作室域名，要么把 `lib/agent.js` 拷到应用自己的 public 目录，用同源地址引入。
+只在开发环境引入，别带进生产构建。如果页面 CSP 禁止内联或跨域脚本，把 `lib/agent.js` 放到应用同源目录，再让加载器指向同源地址。
 
 ### Vite 项目
 
@@ -41,7 +55,7 @@ export default defineConfig({
 })
 ```
 
-`apply: 'serve'` 保证生产构建不会带上它。DSH 不在 3080 时用 `dshStudioAgent({ origin: 'http://127.0.0.1:3081' })` 或 `DSH_STUDIO_URL` 环境变量。
+`apply: 'serve'` 保证生产构建不会带上它。默认注入 referrer 加载器；如果页面剥离 referrer，可以用 `dshStudioAgent({ origin: 'http://host:port' })` 或 `DSH_STUDIO_URL` 直接注入脚本地址。
 
 ## 安装
 
