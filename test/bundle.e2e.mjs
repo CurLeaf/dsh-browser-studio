@@ -36,9 +36,19 @@ await page.addInitScript(() => {
     useRef: () => ({ current: null }),
     useCallback: (fn) => fn,
   }
+  const defineStore = (options) => ({
+    spec: { persist: options.persist },
+    create: () => ({}),
+  })
   window.__ModuleLoader__ = {
     load: (entry) => {
-      window.__PLUGIN__ = entry.factory((name) => (name === 'react' ? React : {}))
+      window.__PLUGIN__ = entry.factory((name) =>
+        name === 'react'
+          ? React
+          : name === '@deepseek-ai/dsh-client-store'
+            ? { defineStore }
+            : {},
+      )
     },
   }
 })
@@ -86,11 +96,19 @@ const registrations = await page.evaluate(() => {
   window.dshDesktop = { browser: { acquire: () => {}, release: () => {} } }
   window.__PLUGIN__.apply(ctx)
   delete window.dshDesktop
-  return registrations.map((entry) => ({ name: entry.name, kind: entry.kind, key: entry.key, id: entry.id }))
+  return registrations.map((entry) => ({
+    name: entry.name,
+    kind: entry.kind,
+    key: entry.key,
+    id: entry.id,
+    store: entry.store !== undefined,
+  }))
 })
 if (!registrations.some((entry) => entry.kind === 'browser')) {
   throw new Error(`takeover was not registered: ${JSON.stringify(registrations)}`)
 }
+const body = registrations.find((entry) => entry.key === 'dsh-browser-studio/browser')
+if (body?.store !== true) throw new Error(`browser body did not register the shared store: ${JSON.stringify(body)}`)
 if (errors.length > 0) throw new Error(`page errors: ${errors.join(' | ')}`)
 
 await browser.close()

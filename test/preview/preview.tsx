@@ -10,9 +10,16 @@ const params = new URLSearchParams(location.search)
 const url = params.get('url') ?? 'http://127.0.0.1:4199/demo.html'
 
 if (localStorage.getItem('dsh.browser-studio.v1.recent') === null) {
+  const title = 'shuangyuan-weapp'
   localStorage.setItem(
     'dsh.browser-studio.v1.recent',
-    JSON.stringify(['http://localhost:9000/mall', 'http://localhost:5173/']),
+    JSON.stringify([
+      { url: 'http://localhost:9000/#/pages/consumer/home/index', title, at: 1 },
+      { url: 'http://localhost:9000/#/pages/consumer/product-search/index', title, at: 2 },
+      { url: 'http://localhost:9000/#/pages/consumer/profile/index', title, at: 3 },
+      { url: 'http://localhost:9000/#/', title, at: 4 },
+      { url: 'http://localhost:9000', title, at: 5 },
+    ]),
   )
 }
 

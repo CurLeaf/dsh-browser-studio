@@ -11,6 +11,7 @@ import {
 } from './bridge'
 import { CSS } from './styles'
 import { EN, NS, ZH } from './i18n'
+import { browserStore, type BrowserStoreActions } from './browser-store'
 
 const TAKEOVER_ID = 'dsh-browser-studio/browser'
 const ALIAS_KIND = 'studio-preview'
@@ -215,17 +216,34 @@ export function apply(ctx: any): void {
         ],
       }
       sidebar.effect(() => sidebar.sidebarRightTabs.register(takeover), 'browser-studio: browser takeover')
-      sidebar.slots.inject('sidebar.right.pane.tab', () =>
-        sidebar.slots.register(
-          {
-            name: 'sidebar.right.pane.tab',
-            key: TAKEOVER_ID,
-            locale: NS,
-            inject: bodyInject,
-          },
-          BrowserBody,
-        ),
-      )
+
+      /** Bound store actions plus the layout inventory, used to forget a genuinely closed tab. */
+      const takeoverInject = (sessionId: string, actions: BrowserStoreActions) => ({
+        ...bodyInject(),
+        storeActions: actions,
+        isTabOpen: (tabId: string): boolean => {
+          try {
+            return sidebar.openTabs
+              .getSnapshot()
+              .some((tab: any) => tab.sessionId === sessionId && tab.tabId === tabId)
+          } catch {
+            return true
+          }
+        },
+      })
+
+      sidebar.slots.inject('sidebar.right.pane.tab', () => {
+        const body: any = {
+          name: 'sidebar.right.pane.tab',
+          key: TAKEOVER_ID,
+          locale: NS,
+          inject: takeoverInject,
+        }
+        // Same persisted store the shipped Browser declares, so sidebar sharing
+        // can mirror the current URL between sessions.
+        if (browserStore !== undefined) body.store = browserStore
+        return sidebar.slots.register(body, BrowserBody)
+      })
       return
     }
 

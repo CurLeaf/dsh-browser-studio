@@ -28,12 +28,30 @@ const shots = [
   { name: 'start-380', width: 380, query: '?url=', menu: false },
   { name: 'start-320', width: 320, query: '?url=', menu: false },
   { name: 'start-620', width: 620, query: '?url=', menu: false },
+  { name: 'start-menu-620', width: 620, query: '?url=', menu: 'more' },
+  { name: 'suggest-620', width: 620, query: '?url=', suggest: true },
+  { name: 'address-focus-620', width: 620, query: '', focus: true },
+  { name: 'address-hover-620', width: 620, query: '?url=', hover: true },
 ]
 for (const shot of shots) {
   const page = await browser.newPage({ viewport: { width: shot.width + 40, height: 820 }, deviceScaleFactor: 2 })
   await page.goto(`http://127.0.0.1:4199/${shot.query}`)
   await page.waitForTimeout(900)
-  if (shot.menu) {
+  if (shot.hover) {
+    await page.hover('.dbs-addr')
+    await page.waitForTimeout(250)
+  } else if (shot.focus) {
+    await page.focus('.dbs-addr')
+    await page.waitForTimeout(250)
+  } else if (shot.suggest) {
+    await page.click('.dbs-addr')
+    await page.fill('.dbs-addr', 'local')
+    await page.keyboard.press('ArrowDown')
+    await page.waitForTimeout(250)
+  } else if (shot.menu === 'more') {
+    await page.click('.dbs-moreBtn')
+    await page.waitForTimeout(250)
+  } else if (shot.menu) {
     await page.click('.dbs-deviceChip')
     await page.waitForTimeout(250)
   }

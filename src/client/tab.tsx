@@ -6,6 +6,14 @@ import {
   rotate, viewportSize, type DeviceState,
 } from './device'
 import { addPendingRef, buildBlock, elementLabel, focusComposer } from './bridge'
+import {
+  clearHistory, historySnapshot, rememberVisit, subscribeHistory, updateHistoryTitle,
+  type HistoryEntry,
+} from './history'
+import {
+  sharedTabTitle, sharedTabUrl, type BrowserStoreActions, type SharedBrowserState,
+  type SharedBrowserTab,
+} from './browser-store'
 import type { AgentEvent, ElementRef } from '../shared/types'
 
 interface GuestElement extends HTMLElement {
@@ -13,6 +21,9 @@ interface GuestElement extends HTMLElement {
   getURL(): string
   getTitle(): string
   reload(): void
+  reloadIgnoringCache?(): void
+  clearHistory?(): void
+  capturePage?(): Promise<unknown>
   canGoBack(): boolean
   canGoForward(): boolean
   goBack(): void
@@ -29,6 +40,14 @@ export interface BodyProps {
   sendPrompt: (sessionId: string, text: string) => Promise<void>
   useTabInfo: () => { tab?: { id?: string; navigation?: { params?: { url?: string } } } }
   useWorkspaces?: (selector: (snapshot: unknown) => unknown) => unknown
+  /** Slot standard prop when the body slot declares the session Browser store. */
+  useStore?: <T>(selector: (state: SharedBrowserState) => T) => T
+  /** Injected bound store actions (`replace` / `forget`) for the same store. */
+  storeActions?: BrowserStoreActions
+  /** Older slot runtimes pass the store actions as the standard `actions` prop. */
+  actions?: BrowserStoreActions
+  /** Authoritative layout membership; a tab that still exists must keep its entry. */
+  isTabOpen?: (tabId: string) => boolean
 }
 
 const STORE = 'dsh.browser-studio.v1'
@@ -66,6 +85,49 @@ function workspaceKeyOf(snapshot: unknown, sessionId: string): string | undefine
   return match === undefined ? `session:${sessionId}` : `cwd:${String(match.path)}`
 }
 
+interface Suggestion {
+  kind: 'open' | 'history'
+  value: string
+  title: string
+  url: string
+}
+
+function stripScheme(url: string): string {
+  return url.replace(/^https?:\/\//i, '')
+}
+
+function Highlight(props: { text: string; query: string }): React.ReactElement {
+  const query = props.query.trim()
+  if (query === '') return <>{props.text}</>
+  const index = props.text.toLowerCase().indexOf(query.toLowerCase())
+  if (index < 0) return <>{props.text}</>
+  return (
+    <>
+      {props.text.slice(0, index)}
+      <mark className="dbs-suggestMatch">{props.text.slice(index, index + query.length)}</mark>
+      {props.text.slice(index + query.length)}
+    </>
+  )
+}
+
+function entryTitle(entry: HistoryEntry): string {
+  if (entry.title !== '') return entry.title
+  try {
+    return new URL(entry.url).host
+  } catch {
+    return stripScheme(entry.url)
+  }
+}
+
+/** A bare word is a search term, not a host; only offer to open URL-shaped input. */
+function looksLikeUrl(input: string): boolean {
+  const raw = input.trim()
+  if (raw === '') return false
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw)) return true
+  if (/[./:]/.test(raw) && !/\s/.test(raw)) return true
+  return /^localhost$/i.test(raw)
+}
+
 
 /* ------------------------------------------------------------------ icons */
 
@@ -96,8 +158,18 @@ const IconForward = (): React.ReactElement => (
 const IconReload = (): React.ReactElement => (
   <Svg><path d="M12.8 8a4.8 4.8 0 1 1-1.4-3.4" /><path d="M12.8 3.4V6h-2.6" /></Svg>
 )
-const IconExternal = (): React.ReactElement => (
-  <Svg><path d="M9 3h4v4" /><path d="M13 3 7.6 8.4" /><path d="M11 9.5V13H3V5h3.5" /></Svg>
+const IconMore = (): React.ReactElement => (
+  <Svg>
+    <circle cx="3.2" cy="8" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="12.8" cy="8" r="1.15" fill="currentColor" stroke="none" />
+  </Svg>
+)
+const IconSearch = (props: { size?: number }): React.ReactElement => (
+  <Svg size={props.size}>
+    <circle cx="7.2" cy="7.2" r="4.5" />
+    <path d="M10.6 10.6 13.6 13.6" />
+  </Svg>
 )
 const IconGlobe = (props: { size?: number }): React.ReactElement => (
   <Svg size={props.size}>
@@ -112,12 +184,6 @@ const IconLink = (): React.ReactElement => (
     <path d="M6.6 9.4 9.4 6.6" />
     <path d="M7.4 5.1 8.8 3.7a2.5 2.5 0 0 1 3.5 3.5L10.9 8.6" />
     <path d="M8.6 10.9 7.2 12.3a2.5 2.5 0 0 1-3.5-3.5l1.4-1.4" />
-  </Svg>
-)
-const IconClock = (): React.ReactElement => (
-  <Svg size={13}>
-    <circle cx="8" cy="8" r="5.4" />
-    <path d="M8 4.8V8l2.2 1.4" />
   </Svg>
 )
 const IconChevron = (): React.ReactElement => (
@@ -188,6 +254,11 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const { t, locale, sessionId, sendPrompt } = props
   const tab = typeof props.useTabInfo === 'function' ? props.useTabInfo().tab : undefined
   const tabId = tab?.id ?? 'default'
+  const useSharedStore: <T>(selector: (state: SharedBrowserState) => T) => T =
+    props.useStore ?? ((selector) => selector({ byTab: {} }))
+  const sharedTab = useSharedStore((state) => state.byTab[tabId])
+  const sharedTabRef = React.useRef<SharedBrowserTab | undefined>(sharedTab)
+  sharedTabRef.current = sharedTab
   const desktop = (globalThis as any).dshDesktop?.browser
   const isDesktop = typeof desktop?.acquire === 'function'
 
@@ -215,15 +286,21 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [iframeKey, setIframeKey] = React.useState(0)
   const [workspaceFallback, setWorkspaceFallback] = React.useState(false)
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [moreOpen, setMoreOpen] = React.useState(false)
   const [hostReady, setHostReady] = React.useState(false)
   const [pendingPick, setPendingPick] = React.useState<ElementRef | null>(null)
   const [note, setNote] = React.useState('')
-  const [recents, setRecents] = React.useState<string[]>(() => readJson<string[]>('recent', []))
+  const recentHistory = React.useSyncExternalStore(subscribeHistory, historySnapshot, historySnapshot)
   const [suggestOpen, setSuggestOpen] = React.useState(false)
   const [suggestIndex, setSuggestIndex] = React.useState(-1)
+  const [startAddress, setStartAddress] = React.useState('')
   const addressRef = React.useRef<HTMLInputElement | null>(null)
+  const startRef = React.useRef<HTMLInputElement | null>(null)
   const [anchor, setAnchor] = React.useState<{ left: number; top: number; w: number; h: number } | null>(null)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
+  const moreMenuRef = React.useRef<HTMLDivElement | null>(null)
+  const moreBtnRef = React.useRef<HTMLButtonElement | null>(null)
+  const suggestRef = React.useRef<HTMLDivElement | null>(null)
   const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
   React.useEffect(() => {
@@ -276,9 +353,41 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     toastTimer.current = window.setTimeout(() => setToast(''), 2200)
   }, [])
 
+  const storeActions = props.storeActions ?? props.actions
+
+  /** Publish the current page into the store that sidebar sharing mirrors. */
+  const publishShared = React.useCallback((url: string, title = '') => {
+    if (storeActions === undefined || typeof storeActions.replace !== 'function') return
+    if (!/^https?:\/\//i.test(url)) return
+    const current = sharedTabRef.current
+    if (sharedTabUrl(current) === url && sharedTabTitle(current) === title) return
+    try {
+      storeActions.replace(tabId, {
+        entries: [{ url, title }],
+        index: 0,
+        navigation: { status: 'known', revision: 0 },
+      })
+    } catch {
+      /* store not ready */
+    }
+  }, [storeActions, tabId])
+
   React.useEffect(() => () => {
     if (toastTimer.current !== 0) window.clearTimeout(toastTimer.current)
   }, [])
+
+  // A closed tab must not leave a URL behind in the shared Browser store.
+  // Unmounting because the session is switched is not a close: keep the entry
+  // while the layout still lists the tab, matching the shipped controller.
+  React.useEffect(() => () => {
+    if (storeActions === undefined || typeof storeActions.forget !== 'function') return
+    if (typeof props.isTabOpen === 'function' && props.isTabOpen(tabId)) return
+    try {
+      storeActions.forget(tabId)
+    } catch {
+      /* store already released */
+    }
+  }, [storeActions, tabId, props.isTabOpen])
 
   React.useEffect(() => {
     writeJson('device', device)
@@ -295,51 +404,66 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     return () => observer.disconnect()
   }, [])
 
-  // Initial URL: tab navigation params win over the remembered one.
+  // Initial URL: the shared Browser store wins over tab params and the remembered one.
   React.useEffect(() => {
     const fromParams = typeof tab?.navigation?.params?.url === 'string' ? tab.navigation.params.url : ''
     const stored = readJson<string>('url.' + sessionId + '.' + tabId, '')
-    const initial = normalizeUrl(fromParams) || normalizeUrl(stored)
+    const initial =
+      normalizeUrl(sharedTabUrl(sharedTab)) || normalizeUrl(fromParams) || normalizeUrl(stored)
     if (initial === '') return
     setAddress(initial)
     setCurrentUrl(initial)
     pendingUrlRef.current = initial
+    rememberVisit(initial)
+    publishShared(initial)
     if (!isDesktop) setIframeUrl(initial)
   }, [])
 
+  // The start page owns the keyboard while the tab has no page.
   React.useEffect(() => {
-    if (currentUrl !== '') return undefined
-    const timer = window.setTimeout(() => addressRef.current?.focus(), 60)
+    if (currentUrl !== '' || guest === 'acquiring') return undefined
+    const timer = window.setTimeout(() => startRef.current?.focus(), 60)
     return () => window.clearTimeout(timer)
-  }, [currentUrl])
+  }, [currentUrl, guest])
+
+  const suggestQuery = currentUrl !== '' && address.trim() === currentUrl ? '' : address.trim()
 
   const suggestions = React.useMemo(() => {
-    if (!suggestOpen) return [] as Array<{ value: string; label: string; kind: 'open' | 'history' }>
-    const query = address.trim()
-    const items: Array<{ value: string; label: string; kind: 'open' | 'history' }> = []
-    const normalized = query === '' ? '' : normalizeUrl(query)
-    if (normalized !== '' && !recents.includes(normalized)) {
-      items.push({ value: normalized, label: normalized.replace(/^https?:\/\//, ''), kind: 'open' })
+    const query = suggestQuery
+    const items: Suggestion[] = []
+    const normalized = looksLikeUrl(query) ? normalizeUrl(query) : ''
+    if (normalized !== '' && !recentHistory.some((entry) => entry.url === normalized)) {
+      items.push({ kind: 'open', value: normalized, title: stripScheme(normalized), url: normalized })
     }
     const needle = query.toLowerCase()
-    for (const url of recents) {
-      if (needle !== '' && !url.toLowerCase().includes(needle)) continue
-      items.push({ value: url, label: url.replace(/^https?:\/\//, ''), kind: 'history' })
+    for (const entry of recentHistory) {
+      const title = entryTitle(entry)
+      if (
+        needle !== '' &&
+        !entry.url.toLowerCase().includes(needle) &&
+        !title.toLowerCase().includes(needle)
+      ) {
+        continue
+      }
+      items.push({ kind: 'history', value: entry.url, title, url: entry.url })
       if (items.length >= 6) break
     }
-    if (items.length === 0 && query === '') {
-      for (const url of ['http://localhost:5173', 'http://localhost:3000']) {
-        items.push({ value: url, label: url.replace(/^https?:\/\//, ''), kind: 'history' })
-      }
-    }
     return items.slice(0, 6)
-  }, [suggestOpen, address, recents])
+  }, [suggestQuery, recentHistory])
 
   const chooseSuggestion = (value: string): void => {
     setSuggestOpen(false)
     setSuggestIndex(-1)
     navigate(value)
   }
+
+  React.useEffect(() => {
+    if (!suggestOpen || suggestIndex < 0) return
+    const active = suggestRef.current?.querySelector<HTMLElement>('[data-active="true"]')
+    if (active !== undefined && active !== null && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest' })
+    }
+  }, [suggestOpen, suggestIndex])
 
   const syncPins = React.useCallback(() => {
     const el = webviewRef.current
@@ -454,9 +578,12 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       try {
         const url = element.getURL()
         if (typeof url === 'string' && url !== '' && !url.startsWith('about:')) {
+          const title = typeof element.getTitle === 'function' ? element.getTitle() : ''
           setCurrentUrl(url)
           setAddress((value) => (value === url ? value : url))
           writeJson('url.' + sessionId + '.' + tabId, url)
+          rememberVisit(url, title)
+          publishShared(url, title)
         }
         setLoading(typeof element.isLoading === 'function' ? (element as any).isLoading() : false)
         setCanBack(element.canGoBack())
@@ -553,6 +680,19 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         sync()
         inject()
       })
+      view.addEventListener('page-title-updated', () => {
+        if (cancelled) return
+        try {
+          const url = view.getURL()
+          const title = view.getTitle()
+          if (typeof url === 'string' && url !== '' && !url.startsWith('about:')) {
+            updateHistoryTitle(url, title)
+            publishShared(url, title)
+          }
+        } catch {
+          /* guest gone */
+        }
+      })
       view.addEventListener('did-start-loading', () => {
         if (!cancelled) setLoading(true)
       })
@@ -607,7 +747,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       cancelled = true
       dispose()
     }
-  }, [isDesktop, hostReady, effectiveWorkspaceKey, retry, sessionId, tabId, desktop, t])
+  }, [isDesktop, hostReady, effectiveWorkspaceKey, retry, sessionId, tabId, desktop, t, publishShared])
 
   // Apply the user agent; reload only when it actually changes after first use.
   React.useEffect(() => {
@@ -678,6 +818,26 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
   }, [menuOpen])
 
+  React.useEffect(() => {
+    if (!moreOpen) return undefined
+    const onPointer = (event: PointerEvent): void => {
+      const target = event.target as Node | null
+      if (target === null) return
+      if (moreMenuRef.current?.contains(target) === true) return
+      if (moreBtnRef.current?.contains(target) === true) return
+      setMoreOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setMoreOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [moreOpen])
+
   const navigate = (input: string): void => {
     const url = normalizeUrl(input)
     if (url === '') {
@@ -687,12 +847,13 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     setAddress(url)
     setCurrentUrl(url)
     setLoadError('')
+    setMoreOpen(false)
+    setSuggestOpen(false)
+    setSuggestIndex(-1)
+    setStartAddress('')
     writeJson('url.' + sessionId + '.' + tabId, url)
-    setRecents((previous) => {
-      const next = [url, ...previous.filter((item) => item !== url)].slice(0, 6)
-      writeJson('recent', next)
-      return next
-    })
+    rememberVisit(url)
+    publishShared(url)
     if (!isDesktop) {
       setIframeUrl(url)
       return
@@ -708,6 +869,13 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
   }
 
+  // Another session opened (or navigated to) the page this tab mirrors.
+  React.useEffect(() => {
+    const url = sharedTabUrl(sharedTab)
+    if (url === '' || url === currentUrl) return
+    navigate(url)
+  }, [sharedTab, currentUrl])
+
   const reload = (): void => {
     if (!isDesktop) {
       setIframeKey((value) => value + 1)
@@ -722,9 +890,92 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
   }
 
-  const openExternal = (): void => {
+  const closeMore = (): void => setMoreOpen(false)
+
+  const copyCurrentUrl = async (): Promise<void> => {
+    closeMore()
     if (currentUrl === '') return
-    window.open(currentUrl, '_blank', 'noopener')
+    try {
+      await navigator.clipboard.writeText(currentUrl)
+      showToast(t('toast.copied'))
+      return
+    } catch {
+      /* clipboard API may be unavailable on this origin */
+    }
+    const helper = document.createElement('textarea')
+    helper.value = currentUrl
+    helper.setAttribute('readonly', '')
+    helper.style.position = 'fixed'
+    helper.style.opacity = '0'
+    document.body.appendChild(helper)
+    helper.select()
+    let copied = false
+    try {
+      copied = document.execCommand('copy')
+    } catch {
+      copied = false
+    }
+    helper.remove()
+    showToast(t(copied ? 'toast.copied' : 'toast.copyFailed'))
+  }
+
+  const hardReload = (): void => {
+    closeMore()
+    if (!isDesktop) {
+      setIframeKey((value) => value + 1)
+      showToast(t('toast.reloaded'))
+      return
+    }
+    const el = webviewRef.current
+    if (el === null) {
+      showToast(t('toast.actionUnavailable'))
+      return
+    }
+    try {
+      if (typeof el.reloadIgnoringCache === 'function') el.reloadIgnoringCache()
+      else el.reload()
+      showToast(t('toast.reloaded'))
+    } catch {
+      showToast(t('toast.actionUnavailable'))
+    }
+  }
+
+  const takeScreenshot = async (): Promise<void> => {
+    closeMore()
+    if (!isDesktop) {
+      showToast(t('toast.desktopOnly'))
+      return
+    }
+    const el = webviewRef.current
+    if (el === null || typeof el.capturePage !== 'function') {
+      showToast(t('toast.screenshotFailed'))
+      return
+    }
+    try {
+      const image = await el.capturePage()
+      const data = (image as { toDataURL?: () => string } | null)?.toDataURL?.()
+      if (typeof data !== 'string' || data === '') throw new Error('empty capture')
+      const link = document.createElement('a')
+      link.href = data
+      link.download = `browser-${new Date().toISOString().replace(/[:.]/g, '-')}.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      showToast(t('toast.screenshot'))
+    } catch {
+      showToast(t('toast.screenshotFailed'))
+    }
+  }
+
+  const clearBrowsingHistory = (): void => {
+    closeMore()
+    clearHistory()
+    try {
+      webviewRef.current?.clearHistory?.()
+    } catch {
+      /* guest gone */
+    }
+    showToast(t('toast.historyCleared'))
   }
 
   const togglePick = (): void => {
@@ -770,7 +1021,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const frameAllowed = preset !== null && (preset.group === 'phone' || preset.group === 'tablet')
   const frameBorder = device.frame && frameAllowed ? 16 : 0
   const deviceLabel = preset?.title ?? (responsive ? t('device.responsive') : t('device.custom'))
-  const dirty = address.trim() !== '' && address.trim() !== currentUrl
   const zoomLabel = device.zoom === 'fit' ? `${Math.round(scale * 100)}%` : `${Math.round(device.zoom * 100)}%`
   const showStart = currentUrl === '' && guest !== 'acquiring'
   const zoomValues = ['fit', 0.5, 0.75, 1] as const
@@ -802,11 +1052,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       : anchor.top + anchor.h + 10 + POP_H <= avail.h
         ? anchor.top + anchor.h + 10
         : Math.max(8, anchor.top - POP_H - 10)
-
-  const recentHosts = recents.slice(0, 2).map((url) => url.replace(/^https?:\/\//, '').replace(/\/$/, ''))
-  const startLinks = [...recentHosts, 'localhost:5173', 'localhost:3000']
-    .filter((value, index, all) => all.indexOf(value) === index)
-    .slice(0, 2)
 
   const statusParts = [formatSize(size.w, size.h)]
   statusParts.push(`${Math.round(scale * 100)}%`)
@@ -860,18 +1105,22 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             navigate(address)
           }}
         >
-          <span className="dbs-addrIcon">
-            <IconGlobe size={14} />
-          </span>
           <input
             ref={addressRef}
             className="dbs-addr"
             value={address}
             placeholder={t('address.placeholder')}
             spellCheck={false}
-            onFocus={() => setSuggestOpen(true)}
+            onFocus={(event) => {
+              setSuggestOpen(true)
+              setSuggestIndex(-1)
+              if (currentUrl !== '' && address.trim() === currentUrl) event.currentTarget.select()
+            }}
             onBlur={() => {
-              window.setTimeout(() => setSuggestOpen(false), 120)
+              window.setTimeout(() => {
+                setSuggestOpen(false)
+                setSuggestIndex(-1)
+              }, 120)
             }}
             onChange={(event) => {
               setAddress(event.target.value)
@@ -882,10 +1131,13 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
               if (event.key === 'ArrowDown') {
                 event.preventDefault()
                 setSuggestOpen(true)
-                setSuggestIndex((index) => Math.min(index + 1, suggestions.length - 1))
+                if (suggestions.length === 0) return
+                setSuggestIndex((index) => (index + 1) % suggestions.length)
               } else if (event.key === 'ArrowUp') {
                 event.preventDefault()
-                setSuggestIndex((index) => Math.max(index - 1, -1))
+                setSuggestOpen(true)
+                if (suggestions.length === 0) return
+                setSuggestIndex((index) => (index <= 0 ? suggestions.length - 1 : index - 1))
               } else if (event.key === 'Escape') {
                 setSuggestOpen(false)
                 setSuggestIndex(-1)
@@ -895,15 +1147,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
               }
             }}
           />
-          {dirty ? (
-            <button className="dbs-go" type="submit" title={t('address.go')} aria-label={t('address.go')}>
-              <IconArrowRight />
-            </button>
-          ) : null}
         </form>
 
         {suggestOpen && suggestions.length > 0 ? (
-          <div className="dbs-suggest" role="listbox">
+          <div className="dbs-suggest" ref={suggestRef} role="listbox">
             {suggestions.map((item, index) => (
               <button
                 key={`${item.kind}:${item.value}`}
@@ -916,9 +1163,16 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
                 onMouseEnter={() => setSuggestIndex(index)}
               >
                 <span className="dbs-suggestIcon">
-                  {item.kind === 'history' ? <IconClock /> : <IconGlobe size={12} />}
+                  <IconGlobe size={16} />
                 </span>
-                <span className="dbs-suggestLabel">{item.label}</span>
+                <span className="dbs-suggestText">
+                  <span className="dbs-suggestTitle">
+                    <Highlight text={item.title} query={suggestQuery} />
+                  </span>
+                  <span className="dbs-suggestUrl">
+                    <Highlight text={item.url} query={suggestQuery} />
+                  </span>
+                </span>
                 {item.kind === 'open' ? <span className="dbs-suggestHint">{t('suggest.open')}</span> : null}
               </button>
             ))}
@@ -926,9 +1180,46 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         ) : null}
         </div>
 
-        <button className="dbs-iconBtn" title={t('toolbar.external')} aria-label={t('toolbar.external')} onClick={openExternal}>
-          <IconExternal />
+        <button
+          ref={moreBtnRef}
+          className="dbs-iconBtn dbs-moreBtn"
+          title={t('menu.more')}
+          aria-label={t('menu.more')}
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((value) => !value)}
+        >
+          <IconMore />
         </button>
+
+        {moreOpen ? (
+          <div className="dbs-moreMenu" ref={moreMenuRef} role="menu" aria-label={t('menu.more')}>
+            <button
+              className="dbs-moreRow"
+              role="menuitem"
+              disabled={!isDesktop || currentUrl === ''}
+              onClick={takeScreenshot}
+            >
+              {t('menu.screenshot')}
+            </button>
+            <div className="dbs-moreSep" role="separator" />
+            <button className="dbs-moreRow" role="menuitem" onClick={hardReload}>
+              {t('menu.hardReload')}
+            </button>
+            <button
+              className="dbs-moreRow"
+              role="menuitem"
+              disabled={currentUrl === ''}
+              onClick={copyCurrentUrl}
+            >
+              {t('menu.copyUrl')}
+            </button>
+            <div className="dbs-moreSep" role="separator" />
+            <button className="dbs-moreRow" role="menuitem" onClick={clearBrowsingHistory}>
+              {t('menu.clearHistory')}
+            </button>
+          </div>
+        ) : null}
 
       </div>
 
@@ -1168,9 +1459,48 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         ) : null}
 
         {showStart ? (
-          <div className="dbs-empty">
-            <IconGlobe size={18} />
-            <span>{t('start.hint')}</span>
+          <div className="dbs-start">
+            <form
+              className="dbs-startForm"
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (startAddress.trim() !== '') navigate(startAddress)
+              }}
+            >
+              <span className="dbs-startSearch">
+                <IconSearch size={17} />
+              </span>
+              <input
+                ref={startRef}
+                className="dbs-startInput"
+                value={startAddress}
+                placeholder={t('start.placeholder')}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => setStartAddress(event.target.value)}
+              />
+            </form>
+
+            <section className="dbs-startRecents" aria-label={t('start.recent')}>
+              <div className="dbs-startRecentsLabel">{t('start.recent')}</div>
+              {recentHistory.length > 0 ? (
+                recentHistory.slice(0, 6).map((entry) => (
+                  <button
+                    key={entry.url}
+                    className="dbs-recentRow"
+                    title={entry.title !== '' ? `${entry.title}\n${entry.url}` : entry.url}
+                    onClick={() => navigate(entry.url)}
+                  >
+                    <span className="dbs-recentIcon">
+                      <IconGlobe size={15} />
+                    </span>
+                    <span className="dbs-recentUrl">{stripScheme(entry.url)}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="dbs-startEmpty">{t('start.empty')}</div>
+              )}
+            </section>
           </div>
         ) : null}
 
