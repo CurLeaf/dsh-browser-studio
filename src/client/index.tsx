@@ -58,8 +58,8 @@ const NO_REFS: PendingRef[] = []
  *
  * Two jobs: keep the one public seam that exposes `inputActions` (`setDraft`,
  * caret insertion), and render the picked page elements as removable chips
- * above the composer. The chip row is the tag UI; the draft keeps a compact
- * one-line reference per element so the model still receives it.
+ * above the composer. Each confirmed pick also appends a compact reference line
+ * to the draft, so the sent bubble shows what travelled with it.
  */
 export function ComposerDock(props: any): React.ReactElement | null {
   const sessionId: string | undefined = props.sessionId

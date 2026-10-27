@@ -188,6 +188,123 @@ describe('browser tab mounting', () => {
     expect(container.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:9000/three')
   })
 
+  it('edits the viewport size, zoom and rulers from the toolbar', async () => {
+    const { container } = render(React.createElement(BrowserBody, props()))
+    const form = container.querySelector('.dbs-addrWrap') as HTMLFormElement
+    const address = container.querySelector('.dbs-addr') as HTMLInputElement
+    fireEvent.change(address, { target: { value: 'localhost:9000/phone' } })
+    fireEvent.submit(form)
+
+    // The phone icon toggles device emulation; it comes up as an iPhone 15.
+    fireEvent.click(container.querySelector('.dbs-deviceBtn') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelector('.dbs-sizeBar')).not.toBeNull())
+    const inputs = Array.from(container.querySelectorAll('.dbs-sizeBar .dbs-num')) as HTMLInputElement[]
+    expect(inputs).toHaveLength(2)
+    expect(inputs.map((input) => input.value)).toEqual(['393', '852'])
+
+    fireEvent.focus(inputs[0])
+    fireEvent.change(inputs[0], { target: { value: '412' } })
+    fireEvent.focus(inputs[1])
+    fireEvent.change(inputs[1], { target: { value: '915' } })
+    // The pair commits together when focus leaves the row, not per keystroke.
+    fireEvent.focusOut(inputs[1], { relatedTarget: null })
+
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem('dsh.browser-studio.v1.device') as string)).toMatchObject({
+        presetId: 'custom',
+        width: 412,
+        height: 915,
+      }),
+    )
+    expect((container.querySelectorAll('.dbs-sizeBar .dbs-num')[0] as HTMLInputElement).value).toBe('412')
+
+    // Arrow keys nudge the draft, Escape throws it away without touching the device.
+    fireEvent.focus(inputs[0])
+    fireEvent.keyDown(inputs[0], { key: 'ArrowUp', shiftKey: true })
+    expect((container.querySelectorAll('.dbs-sizeBar .dbs-num')[0] as HTMLInputElement).value).toBe('422')
+    fireEvent.keyDown(inputs[0], { key: 'Escape' })
+    expect((container.querySelectorAll('.dbs-sizeBar .dbs-num')[0] as HTMLInputElement).value).toBe('412')
+
+    fireEvent.click(container.querySelector('.dbs-zoomBtn') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelector('.dbs-zoomMenu')).not.toBeNull())
+    const zoomRow = Array.from(container.querySelectorAll('.dbs-zoomRow')).find((row) =>
+      row.textContent?.includes('125%'),
+    ) as HTMLButtonElement
+    fireEvent.click(zoomRow)
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem('dsh.browser-studio.v1.device') as string).zoom).toBe(1.25),
+    )
+
+    fireEvent.click(container.querySelector('.dbs-rulerBtn') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelector('.dbs-rulers')).not.toBeNull())
+    expect(container.querySelectorAll('.dbs-rulerLabel').length).toBeGreaterThan(0)
+
+    // The top ruler pulls out a horizontal guide, the left ruler a vertical one.
+    fireEvent.pointerDown(container.querySelector('.dbs-rulerX') as HTMLElement, {
+      button: 0,
+      pointerId: 7,
+      clientX: 40,
+      clientY: 120,
+    })
+    fireEvent.pointerUp(window, { pointerId: 7 })
+    await waitFor(() => expect(container.querySelectorAll('.dbs-guideY')).toHaveLength(1))
+    fireEvent.pointerDown(container.querySelector('.dbs-rulerY') as HTMLElement, {
+      button: 0,
+      pointerId: 8,
+      clientX: 80,
+      clientY: 20,
+    })
+    fireEvent.pointerUp(window, { pointerId: 8 })
+    await waitFor(() => expect(container.querySelectorAll('.dbs-guideX')).toHaveLength(1))
+
+    fireEvent.doubleClick(container.querySelector('.dbs-guideX') as HTMLElement)
+    await waitFor(() => expect(container.querySelectorAll('.dbs-guideX')).toHaveLength(0))
+  })
+
+  it('switches devices from the size bar dropdown', async () => {
+    const { container } = render(React.createElement(BrowserBody, props()))
+    const form = container.querySelector('.dbs-addrWrap') as HTMLFormElement
+    const address = container.querySelector('.dbs-addr') as HTMLInputElement
+    fireEvent.change(address, { target: { value: 'localhost:9000/phone' } })
+    fireEvent.submit(form)
+
+    fireEvent.click(container.querySelector('.dbs-deviceBtn') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelector('.dbs-sizeBar')).not.toBeNull())
+
+    // The device name in the size bar is the switcher.
+    fireEvent.click(container.querySelector('.dbs-sizeDevice') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelectorAll('.dbs-sizeBar .dbs-menu')).toHaveLength(1))
+    const pixel = Array.from(container.querySelectorAll('.dbs-menu .dbs-row')).find((row) =>
+      row.textContent?.includes('Pixel 9'),
+    ) as HTMLButtonElement
+    fireEvent.click(pixel)
+
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem('dsh.browser-studio.v1.device') as string)).toMatchObject({
+        presetId: 'pixel-9',
+        width: 412,
+        height: 924,
+      }),
+    )
+    expect(container.querySelector('.dbs-sizeDevice')?.textContent).toContain('Pixel 9')
+
+    fireEvent.click(container.querySelector('.dbs-deviceBtn') as HTMLButtonElement)
+    await waitFor(() => expect(container.querySelector('.dbs-sizeBar')).toBeNull())
+  })
+
+  it('keeps picking disabled until a page agent handshakes', async () => {
+    const { container } = render(React.createElement(BrowserBody, props()))
+    const form = container.querySelector('.dbs-addrWrap') as HTMLFormElement
+    const address = container.querySelector('.dbs-addr') as HTMLInputElement
+    fireEvent.change(address, { target: { value: 'localhost:9000/plain' } })
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(container.querySelector('.dbs-toolBtn')).not.toBeNull())
+    const pick = container.querySelector('.dbs-toolBtn') as HTMLButtonElement
+    expect(pick.getAttribute('aria-disabled')).toBe('true')
+    expect(pick.getAttribute('title')).toContain('pick.needAgent')
+  })
+
   it('forgets the shared entry only when the tab is really closed', () => {
     const forget = vi.fn()
     const storeActions = { replace: vi.fn(), forget }

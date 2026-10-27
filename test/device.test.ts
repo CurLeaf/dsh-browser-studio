@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { computeScale, DEFAULT_DEVICE, normalizeUrl, rotate, viewportSize } from '../src/client/device'
+import {
+  applyPreset, computeScale, DEFAULT_DEVICE, isLandscape, normalizeUrl, rotate, viewportSize, ZOOM_STEPS,
+} from '../src/client/device'
+import { PRESET_BY_ID, type Preset } from '../src/client/presets'
 
 describe('normalizeUrl', () => {
   it('defaults loopback to http', () => {
@@ -32,8 +35,30 @@ describe('viewport math', () => {
     const state = { ...DEFAULT_DEVICE, presetId: 'custom', width: 800, height: 600, zoom: 0.5 as const }
     expect(computeScale(state, { w: 300, h: 300 })).toBe(0.5)
   })
+  it('accepts the wider zoom ladder', () => {
+    const state = { ...DEFAULT_DEVICE, presetId: 'custom', width: 412, height: 915, zoom: 1.25 }
+    expect(computeScale(state, { w: 500, h: 900 })).toBe(1.25)
+    expect(ZOOM_STEPS).toContain(1.25)
+  })
   it('rotates by swapping dimensions', () => {
     const state = { ...DEFAULT_DEVICE, presetId: 'custom', width: 393, height: 852, portrait: true }
     expect(rotate(state)).toMatchObject({ width: 852, height: 393, portrait: false })
+  })
+  it('keeps rulers off by default', () => {
+    expect(DEFAULT_DEVICE.rulers).toBe(false)
+  })
+  it('tells a rotated portrait preset apart from a landscape one', () => {
+    const phone = PRESET_BY_ID.get('iphone-15') as Preset
+    expect(isLandscape({ ...DEFAULT_DEVICE, ...applyPreset(DEFAULT_DEVICE, phone) }, phone)).toBe(false)
+    const rotated = rotate(applyPreset(DEFAULT_DEVICE, phone))
+    expect(isLandscape(rotated, phone)).toBe(true)
+    expect(applyPreset(rotated, phone).portrait).toBe(true)
+  })
+  it('snaps back to fit when a device is picked', () => {
+    const phone = PRESET_BY_ID.get('iphone-15') as Preset
+    const state = applyPreset({ ...DEFAULT_DEVICE, zoom: 1.5 }, phone)
+    expect(state.zoom).toBe('fit')
+    expect(state.width).toBe(393)
+    expect(state.height).toBe(852)
   })
 })

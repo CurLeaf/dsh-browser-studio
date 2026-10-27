@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { apply, buildContextText, normalizeBlocks } from '../index.js'
 
 function makeContext() {
-  const captured = { route: null, hook: null }
+  const captured = { routes: [], route: null, hook: null }
   const ctx = {
-    get: (name) => (name === 'webServer' ? { register: (route) => { captured.route = route; return () => {} } } : undefined),
+    get: (name) => (name === 'webServer' ? { register: (route) => {
+      captured.routes.push(route)
+      if (route.path === '/browser-studio/api/refs') captured.route = route
+      return () => {}
+    } } : undefined),
     effect: (fn) => {
       const dispose = fn()
       return typeof dispose === 'function' ? dispose : () => {}
@@ -74,6 +78,49 @@ describe('host refs route + hidden context', () => {
     const { route } = makeContext()
     const bad = await callRoute(route, makeRequest({ sessionId: 's1', blocks: 'nope' }))
     expect(bad.status).toBe(400)
+  })
+
+  it('serves the page agent bundle for the web bridge', async () => {
+    const { routes } = makeContext()
+    const agentRoute = routes.find((entry) => entry.path === '/browser-studio/agent.js')
+    expect(agentRoute).toBeTruthy()
+
+    const response = {
+      status: 0,
+      headers: {},
+      body: '',
+      writeHead(status, headers = {}) {
+        this.status = status
+        this.headers = headers
+      },
+      end(data) {
+        this.body = data ?? ''
+      },
+    }
+    await agentRoute.handler({ method: 'GET', headers: {} }, response)
+    expect(response.status).toBe(200)
+    expect(response.headers['content-type']).toContain('text/javascript')
+    expect(response.headers['access-control-allow-origin']).toBe('*')
+    expect(String(response.body)).toContain('__DSH_STUDIO_AGENT__')
+  })
+
+  it('rejects non-GET requests for the agent bundle', async () => {
+    const { routes } = makeContext()
+    const agentRoute = routes.find((entry) => entry.path === '/browser-studio/agent.js')
+    const response = {
+      status: 0,
+      headers: {},
+      body: '',
+      writeHead(status, headers = {}) {
+        this.status = status
+        this.headers = headers
+      },
+      end(data) {
+        this.body = data ?? ''
+      },
+    }
+    await agentRoute.handler({ method: 'POST', headers: {} }, response)
+    expect(response.status).toBe(405)
   })
 
   it('keeps helpers importable for unit use', () => {

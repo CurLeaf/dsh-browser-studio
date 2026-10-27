@@ -175,6 +175,34 @@ export function focusComposer(toEnd = false): void {
   selection.addRange(range)
 }
 
+/**
+ * Append a visible reference line to the chat composer.
+ *
+ * The composer is a Lexical contenteditable; it exposes no draft API to slots,
+ * so we insert at the caret end and let the editor's own input pipeline pick it
+ * up. Returns false when the composer is not on screen.
+ */
+export function appendComposerLine(line: string): boolean {
+  if (typeof document === 'undefined') return false
+  const active = document.activeElement
+  const editor =
+    active instanceof HTMLElement && active.isContentEditable
+      ? active
+      : document.querySelector('[contenteditable="true"]')
+  if (!(editor instanceof HTMLElement)) return false
+  editor.focus()
+  const selection = window.getSelection()
+  if (selection === null) return false
+  const range = document.createRange()
+  range.selectNodeContents(editor)
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
+  const text = (editor.innerText ?? '').trimEnd()
+  const prefix = text === '' || text.endsWith('\n') ? '' : '\n'
+  return document.execCommand('insertText', false, `${prefix}${line}`)
+}
+
 /** Post the current element details to the host; the next agent step injects them. */
 export function publishRefs(sessionId: string, blocks: string[]): void {
   if (typeof fetch !== 'function' || sessionId === '') return

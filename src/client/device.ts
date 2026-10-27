@@ -1,6 +1,9 @@
 import { PRESET_BY_ID, type Preset } from './presets'
 
-export type Zoom = 'fit' | 0.5 | 0.75 | 1
+export type Zoom = 'fit' | number
+
+/** Zoom choices offered next to the size fields; "fit" is always first. */
+export const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5] as const
 
 export interface DeviceState {
   /** `responsive` fills the panel; otherwise a preset id or `custom`. */
@@ -11,6 +14,8 @@ export interface DeviceState {
   uaMobile: boolean
   frame: boolean
   portrait: boolean
+  /** Pixel rulers drawn around the simulated viewport. */
+  rulers: boolean
 }
 
 export const DEFAULT_DEVICE: DeviceState = {
@@ -21,6 +26,7 @@ export const DEFAULT_DEVICE: DeviceState = {
   uaMobile: false,
   frame: false,
   portrait: true,
+  rulers: false,
 }
 
 export function clamp(value: number, min: number, max: number): number {
@@ -47,7 +53,7 @@ export function computeScale(
 ): number {
   if (state.presetId === 'responsive') return 1
   const { w, h } = viewportSize(state, avail)
-  if (state.zoom !== 'fit') return state.zoom
+  if (state.zoom !== 'fit') return clamp(Number.isFinite(state.zoom) ? state.zoom : 1, 0.1, 4)
   const fit = Math.min((avail.w - padding) / w, (avail.h - padding) / h)
   return clamp(Number.isFinite(fit) ? fit : 1, 0.1, 1)
 }
@@ -62,9 +68,16 @@ export function applyPreset(state: DeviceState, preset: Preset): DeviceState {
     presetId: preset.id,
     width: preset.width,
     height: preset.height,
+    portrait: preset.height >= preset.width,
+    zoom: 'fit',
     uaMobile: preset.mobile,
     frame: preset.mobile || preset.id.startsWith('ipad'),
   }
+}
+
+/** A portrait preset that the user has rotated into landscape. */
+export function isLandscape(state: DeviceState, preset: Preset | null): boolean {
+  return preset !== null && preset.width < preset.height && state.width > state.height
 }
 
 export function normalizeUrl(input: string): string {

@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { AGENT_BOOT } from '../generated/agent-bundle'
-import { PRESETS, PRESET_BY_ID, type Preset } from './presets'
+import { PRESETS, PRESET_BY_ID } from './presets'
 import {
-  applyPreset, clamp, computeScale, DEFAULT_DEVICE, formatSize, normalizeUrl, presetFor,
-  rotate, viewportSize, type DeviceState,
+  applyPreset, clamp, computeScale, DEFAULT_DEVICE, formatSize, isLandscape, normalizeUrl, presetFor,
+  viewportSize, ZOOM_STEPS, type DeviceState,
 } from './device'
-import { addPendingRef, buildBlock, elementLabel, focusComposer } from './bridge'
+import { addPendingRef, appendComposerLine, buildBlock, elementLabel, focusComposer } from './bridge'
+import { createWebAgent, type WebAgent } from './web-agent'
 import {
   clearHistory, historySnapshot, rememberVisit, subscribeHistory, updateHistoryTitle,
   type HistoryEntry,
@@ -190,51 +191,28 @@ const IconChevron = (): React.ReactElement => (
   <Svg size={12}><path d="M4 6.5 8 10 12 6.5" /></Svg>
 )
 const IconPick = (): React.ReactElement => (
+  <Svg><path d="M3.5 2.5 12 7.2l-3.8 1-1.1 3.9z" /></Svg>
+)
+const IconResponsive = (): React.ReactElement => (
   <Svg>
-    <circle cx="8" cy="8" r="4.2" />
-    <path d="M8 1.4v2.9M8 11.7v2.9M1.4 8h2.9M11.7 8h2.9" />
+    <rect x="1.5" y="2.4" width="9.4" height="6.8" rx="1.2" />
+    <path d="M1.8 11.2h8.8" />
+    <rect x="9.6" y="7.6" width="4.9" height="6.4" rx="1.3" />
+    <path d="M11.3 12.4h1.5" />
   </Svg>
 )
-const IconRotate = (): React.ReactElement => (
-  <Svg><path d="M12.6 8A4.6 4.6 0 1 1 11.2 4.8" /><path d="M12.6 2.9v2.5h-2.5" /></Svg>
+const IconRuler = (): React.ReactElement => (
+  <Svg>
+    <rect x="1.4" y="4.7" width="13.2" height="6.6" rx="1.3" />
+    <path d="M4.4 4.7v2.3M6.6 4.7v3.5M8.8 4.7v2.3M11 4.7v3.5" />
+  </Svg>
+)
+const IconCheck = (): React.ReactElement => (
+  <Svg size={12}><path d="M3 8.4 6.3 11.6 13 4.6" /></Svg>
 )
 const IconArrowRight = (): React.ReactElement => (
   <Svg size={12}><path d="M3 8h9" /><path d="M8.5 4.5 12 8l-3.5 3.5" /></Svg>
 )
-const IconDevice = (props: { group?: string; size?: number }): React.ReactElement => {
-  const size = props.size ?? 15
-  if (props.group === 'laptop') {
-    return (
-      <Svg size={size}>
-        <rect x="3" y="3.5" width="10" height="7" rx="1.3" />
-        <path d="M1.8 12.2h12.4" />
-      </Svg>
-    )
-  }
-  if (props.group === 'desktop') {
-    return (
-      <Svg size={size}>
-        <rect x="1.8" y="2.8" width="12.4" height="8.2" rx="1.3" />
-        <path d="M8 11v2.2M5.6 13.2h4.8" />
-      </Svg>
-    )
-  }
-  if (props.group === 'tablet') {
-    return (
-      <Svg size={size}>
-        <rect x="3.2" y="1.6" width="9.6" height="12.8" rx="1.6" />
-        <path d="M7.2 12.6h1.6" />
-      </Svg>
-    )
-  }
-  return (
-    <Svg size={size}>
-      <rect x="4.4" y="1.6" width="7.2" height="12.8" rx="1.8" />
-      <path d="M7 12.5h2" />
-    </Svg>
-  )
-}
-
 function Switch(props: { on: boolean; disabled?: boolean; onChange: (next: boolean) => void; label: string }): React.ReactElement {
   return (
     <button
@@ -247,6 +225,133 @@ function Switch(props: { on: boolean; disabled?: boolean; onChange: (next: boole
       className="dbs-switch"
       onClick={() => props.onChange(!props.on)}
     />
+  )
+}
+
+const RULER_SIZE = 18
+
+/** Labelled every N device pixels; keep labels at least ~44 panel px apart. */
+function rulerStep(scale: number): number {
+  for (const step of [25, 50, 100, 200, 500]) if (step * scale >= 44) return step
+  return 1000
+}
+
+function RulerMarks(props: { length: number; scale: number; offset?: number; vertical?: boolean }): React.ReactElement {
+  const step = rulerStep(props.scale)
+  const offset = props.offset ?? 0
+  const marks: number[] = []
+  for (let value = step; value <= props.length; value += step) {
+    if (props.length - value < step * 0.4) continue
+    marks.push(value)
+  }
+  return (
+    <>
+      {marks.map((value) => (
+        <span
+          key={value}
+          className={props.vertical === true ? 'dbs-rulerLabel dbs-rulerLabelY' : 'dbs-rulerLabel'}
+          style={
+            props.vertical === true
+              ? { top: offset + value * props.scale }
+              : { left: offset + value * props.scale }
+          }
+        >
+          {value}
+        </span>
+      ))}
+    </>
+  )
+}
+
+interface RulerBox {
+  left: number
+  top: number
+  w: number
+  h: number
+  /** Device-frame border between the stage edge and the page. */
+  inset: number
+}
+
+interface GuideDrag {
+  axis: 'x' | 'y'
+  index: number
+}
+
+interface RulerOverlayProps {
+  box: RulerBox
+  width: number
+  height: number
+  scale: number
+  guides: { x: number[]; y: number[] }
+  dragging: GuideDrag | null
+  hint: string
+  onStartGuide: (event: React.PointerEvent, axis: 'x' | 'y', index: number | null) => void
+  onRemoveGuide: (axis: 'x' | 'y', index: number) => void
+}
+
+function RulerOverlay(props: RulerOverlayProps): React.ReactElement {
+  const { box, width, height, scale } = props
+  const step = rulerStep(scale)
+  const stageLeft = box.left - box.inset
+  const stageTop = box.top - box.inset
+  const stageW = box.w + box.inset * 2
+  const stageH = box.h + box.inset * 2
+  const top = Math.max(stageTop - RULER_SIZE, 0)
+  const left = Math.max(stageLeft - RULER_SIZE, 0)
+  const style = (element: 'x' | 'y'): React.CSSProperties =>
+    ({
+      ...(element === 'x'
+        ? { left: stageLeft, top, width: stageW }
+        : { left, top: stageTop, height: stageH }),
+      '--dbs-tick': `${(step / 10) * scale}px`,
+      '--dbs-half': `${(step / 2) * scale}px`,
+      '--dbs-major': `${step * scale}px`,
+      '--dbs-origin': `${box.inset}px`,
+    }) as unknown as React.CSSProperties
+  return (
+    <div className="dbs-rulers">
+      <div
+        className="dbs-rulerX"
+        style={style('x')}
+        title={props.hint}
+        onPointerDown={(event) => props.onStartGuide(event, 'y', null)}
+      >
+        <RulerMarks length={width} scale={scale} offset={box.inset} />
+      </div>
+      <div
+        className="dbs-rulerY"
+        style={style('y')}
+        title={props.hint}
+        onPointerDown={(event) => props.onStartGuide(event, 'x', null)}
+      >
+        <RulerMarks length={height} scale={scale} offset={box.inset} vertical />
+      </div>
+      <div className="dbs-rulerCorner" style={{ left, top }} />
+      {props.guides.x.map((value, index) => (
+        <div
+          key={`x-${index}`}
+          className="dbs-guide dbs-guideX"
+          data-dragging={props.dragging !== null && props.dragging.axis === 'x' && props.dragging.index === index}
+          style={{ left: box.left + value * scale, top: box.top, height: box.h }}
+          onPointerDown={(event) => props.onStartGuide(event, 'x', index)}
+          onDoubleClick={() => props.onRemoveGuide('x', index)}
+        >
+          <span className="dbs-guideTag">{Math.round(value)}</span>
+        </div>
+      ))}
+      {props.guides.y.map((value, index) => (
+        <div
+          key={`y-${index}`}
+          className="dbs-guide dbs-guideY"
+          data-dragging={props.dragging !== null && props.dragging.axis === 'y' && props.dragging.index === index}
+          style={{ left: box.left, top: box.top + value * scale, width: box.w }}
+          onPointerDown={(event) => props.onStartGuide(event, 'y', index)}
+          onDoubleClick={() => props.onRemoveGuide('y', index)}
+        >
+          <span className="dbs-guideTag">{Math.round(value)}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -266,7 +371,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const workspaceSnapshot: unknown = typeof useWorkspaces === 'function' ? useWorkspaces((s) => s) : undefined
   const workspaceKey = workspaceKeyOf(workspaceSnapshot, sessionId)
 
-  const [device, setDevice] = React.useState<DeviceState>(() => readJson('device', DEFAULT_DEVICE))
+  const [device, setDevice] = React.useState<DeviceState>(() => ({
+    ...DEFAULT_DEVICE,
+    ...readJson<Partial<DeviceState>>('device', {}),
+  }))
   const [address, setAddress] = React.useState('')
   const [currentUrl, setCurrentUrl] = React.useState('')
   const [loading, setLoading] = React.useState(false)
@@ -282,8 +390,16 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const [toast, setToast] = React.useState('')
   const [loadError, setLoadError] = React.useState('')
   const [avail, setAvail] = React.useState({ w: 0, h: 0 })
+  const [sizeDraft, setSizeDraft] = React.useState<{ w: string; h: string } | null>(null)
+  const [rulerBox, setRulerBox] = React.useState<RulerBox | null>(null)
+  const [guides, setGuides] = React.useState<{ x: number[]; y: number[] }>({ x: [], y: [] })
+  const [guideDrag, setGuideDrag] = React.useState<GuideDrag | null>(null)
+  const [menuLeft, setMenuLeft] = React.useState(8)
+  const [zoomOpen, setZoomOpen] = React.useState(false)
   const [iframeUrl, setIframeUrl] = React.useState('')
   const [iframeKey, setIframeKey] = React.useState(0)
+  const [agentReady, setAgentReady] = React.useState(false)
+  const canPick = isDesktop || agentReady
   const [workspaceFallback, setWorkspaceFallback] = React.useState(false)
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [moreOpen, setMoreOpen] = React.useState(false)
@@ -301,7 +417,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const moreMenuRef = React.useRef<HTMLDivElement | null>(null)
   const moreBtnRef = React.useRef<HTMLButtonElement | null>(null)
   const suggestRef = React.useRef<HTMLDivElement | null>(null)
-  const deviceBtnRef = React.useRef<HTMLButtonElement | null>(null)
+  const sizeBtnRef = React.useRef<HTMLButtonElement | null>(null)
+  const zoomBtnRef = React.useRef<HTMLButtonElement | null>(null)
+  const zoomMenuRef = React.useRef<HTMLDivElement | null>(null)
 
   React.useEffect(() => {
     if (workspaceKey !== undefined || workspaceFallback) return undefined
@@ -314,6 +432,8 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const viewportRef = React.useRef<HTMLDivElement | null>(null)
   const hostRef = React.useRef<HTMLDivElement | null>(null)
   const stageRef = React.useRef<HTMLDivElement | null>(null)
+  const canvasRef = React.useRef<HTMLDivElement | null>(null)
+  const cancelSizeRef = React.useRef(false)
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const pendingRef = React.useRef<ElementRef | null>(null)
   const noteRef = React.useRef('')
@@ -323,10 +443,14 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     setHostReady(node !== null)
   }, [])
   const webviewRef = React.useRef<GuestElement | null>(null)
+  const iframeRef = React.useRef<HTMLIFrameElement | null>(null)
+  const webAgentRef = React.useRef<WebAgent | null>(null)
+  const bridgeToken = React.useMemo(() => `tab-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`, [tabId])
   const readyRef = React.useRef(false)
   const pendingUrlRef = React.useRef('')
   const pickingRef = React.useRef(false)
   const deviceRef = React.useRef(device)
+  const lastDeviceRef = React.useRef<DeviceState | null>(null)
   const localeRef = React.useRef(locale)
   const toastTimer = React.useRef(0)
   const lastUARef = React.useRef<string | null>(null)
@@ -343,7 +467,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const preset = presetFor(device.presetId)
   const ua = device.uaMobile ? preset?.ua ?? FALLBACK_MOBILE_UA : DESKTOP_UA
   const size = viewportSize(device, avail)
-  const scale = computeScale(device, avail)
+  const scale = computeScale(device, avail, 0)
   scaleRef.current = scale
   const responsive = device.presetId === 'responsive'
 
@@ -393,16 +517,63 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     writeJson('device', device)
   }, [device])
 
-  // Measure the viewport so fixed devices can be fitted.
+  // Remember the last real device so the toolbar toggle can come back to it.
+  React.useEffect(() => {
+    if (device.presetId !== 'responsive') lastDeviceRef.current = device
+  }, [device])
+
+  // Measure the viewport's content box (padding excluded) so a fitted device
+  // never spills over and toggles scrollbars, which would feed back into the
+  // scale while the chat panel animates open.
   React.useLayoutEffect(() => {
     const node = viewportRef.current
     if (node === null) return undefined
-    const measure = (): void => setAvail({ w: node.clientWidth, h: node.clientHeight })
+    const measure = (): void => {
+      const style = window.getComputedStyle(node)
+      const padX = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0)
+      const padY = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0)
+      setAvail({
+        w: Math.max(0, Math.floor(node.clientWidth - padX)),
+        h: Math.max(0, Math.floor(node.clientHeight - padY)),
+      })
+    }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(node)
     return () => observer.disconnect()
   }, [])
+
+  // Rulers hug the simulated viewport, so re-measure whenever it moves or scales.
+  React.useLayoutEffect(() => {
+    if (!device.rulers) return undefined
+    const measure = (): void => {
+      const canvas = canvasRef.current
+      const stage = stageRef.current
+      const viewport = viewportRef.current
+      if (canvas === null || stage === null || viewport === null) return
+      const page = canvas.getBoundingClientRect()
+      const frame = stage.getBoundingClientRect()
+      const area = viewport.getBoundingClientRect()
+      const left = page.left - area.left + viewport.scrollLeft
+      const top = page.top - area.top + viewport.scrollTop
+      setRulerBox({
+        left,
+        top,
+        w: page.width,
+        h: page.height,
+        inset: Math.max(0, Math.round(left - (frame.left - area.left + viewport.scrollLeft))),
+      })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    if (canvasRef.current !== null) observer.observe(canvasRef.current)
+    if (viewportRef.current !== null) observer.observe(viewportRef.current)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [device.rulers, device.width, device.height, device.zoom, device.frame, device.presetId, avail.w, avail.h, scale])
 
   // Initial URL: the shared Browser store wins over tab params and the remembered one.
   React.useEffect(() => {
@@ -465,11 +636,54 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     }
   }, [suggestOpen, suggestIndex])
 
+  /** One command surface for both transports: webview injection and the iframe bridge. */
+  const callAgent = React.useCallback(
+    <T,>(cmd: string, arg?: unknown): Promise<T | null> => {
+      if (isDesktop) {
+        const el = webviewRef.current
+        if (el === null || !readyRef.current) return Promise.resolve(null)
+        return el.executeJavaScript(callCode(cmd, arg), false).then(
+          (value) => (value ?? null) as T | null,
+          () => null,
+        )
+      }
+      return webAgentRef.current?.call<T>(cmd, arg) ?? Promise.resolve(null)
+    },
+    [isDesktop],
+  )
+
+  React.useEffect(() => {
+    if (isDesktop) return undefined
+    const agent = createWebAgent({
+      getFrame: () => iframeRef.current,
+      token: bridgeToken,
+      onReady: () => setAgentReady(true),
+      onReset: () => setAgentReady(false),
+    })
+    webAgentRef.current = agent
+    return () => {
+      agent.dispose()
+      webAgentRef.current = null
+      setAgentReady(false)
+    }
+  }, [isDesktop, bridgeToken])
+
+  // The page may load after us and vice versa; keep greeting until it answers.
+  React.useEffect(() => {
+    if (isDesktop || iframeUrl === '') return undefined
+    const greet = (): void => webAgentRef.current?.greet()
+    greet()
+    const timer = window.setInterval(greet, 500)
+    const stop = window.setTimeout(() => window.clearInterval(timer), 8000)
+    return () => {
+      window.clearInterval(timer)
+      window.clearTimeout(stop)
+    }
+  }, [isDesktop, iframeUrl, iframeKey])
+
   const syncPins = React.useCallback(() => {
-    const el = webviewRef.current
-    if (el === null || !readyRef.current) return
-    el.executeJavaScript(callCode('pins', pinsRef.current), false).catch(() => {})
-  }, [])
+    void callAgent('pins', pinsRef.current)
+  }, [callAgent])
 
   const beginPick = React.useCallback((ref: ElementRef) => {
     if (pendingRef.current !== null) return
@@ -480,10 +694,9 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   }, [])
 
   const resumePagePicking = React.useCallback(() => {
-    const el = webviewRef.current
-    if (el === null || !readyRef.current || !pickingRef.current) return
-    el.executeJavaScript(callCode('pick', true), false).catch(() => {})
-  }, [])
+    if (!pickingRef.current) return
+    void callAgent('pick', true)
+  }, [callAgent])
 
   const closePickPopover = React.useCallback(() => {
     pendingRef.current = null
@@ -507,8 +720,10 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     const meta = { deviceLabel: label, uaMobile: d.uaMobile, locale: localeRef.current }
     const detail = buildBlock(ref, n, meta, text)
     addPendingRef(sessionId, { n, label: elementLabel(ref), note: text, detail })
-    // The dock publishes the chip list to the host; the composer stays clean.
+    // The dock publishes the chip list to the host; the visible reference keeps
+    // the sent message honest about what travels with it.
     focusComposer(true)
+    appendComposerLine(`〔引用 ${n} · ${elementLabel(ref)}${text !== '' ? ` · ${text}` : ''}〕`)
     showToast(t('toast.added'))
     pinsRef.current = [...pinsRef.current, { n, selector: ref.selector }]
     syncPins()
@@ -520,15 +735,12 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     if (pendingPick === null) return undefined
     let cancelled = false
     const update = (): void => {
-      const el = webviewRef.current
       const stage = stageRef.current
       const viewport = viewportRef.current
-      if (el === null || stage === null || viewport === null) return
-      el.executeJavaScript(callCode('rect', pendingPick.selector), false).then(
-        (rect: unknown) => {
-          if (cancelled) return
-          const r = rect as { x: number; y: number; w: number; h: number } | null
-          if (r === null || r === undefined) return
+      if (stage === null || viewport === null) return
+      void callAgent<{ x: number; y: number; w: number; h: number }>('rect', pendingPick.selector).then(
+        (r) => {
+          if (cancelled || r === null) return
           const stageRect = stage.getBoundingClientRect()
           const viewportRect = viewport.getBoundingClientRect()
           const s = scaleRef.current
@@ -539,7 +751,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             h: r.h * s,
           })
         },
-        () => {},
       )
     }
     update()
@@ -548,14 +759,12 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [pendingPick])
+  }, [pendingPick, callAgent])
 
   React.useEffect(() => {
-    const el = webviewRef.current
-    if (el === null || !readyRef.current) return
     const selector = pendingPick === null ? null : pendingPick.selector
-    el.executeJavaScript(callCode('highlight', selector), false).catch(() => {})
-  }, [pendingPick])
+    void callAgent('highlight', selector)
+  }, [pendingPick, callAgent])
 
   // Guest lifecycle: one lease, one webview, events wired to React state.
   React.useLayoutEffect(() => {
@@ -772,38 +981,33 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   React.useEffect(() => {
     if (!picking) return undefined
     const timer = window.setInterval(() => {
-      const el = webviewRef.current
-      if (el === null || !readyRef.current) return
-      el.executeJavaScript(callCode('drain'), false).then(
-        (result: unknown) => {
-          const events = (result as { events?: AgentEvent[] } | undefined)?.events ?? []
-          for (const event of events) {
-            if (event.kind === 'pick') {
-              beginPick(event.ref)
-              if (webviewRef.current !== null) {
-                webviewRef.current.executeJavaScript(callCode('pick', false), false).catch(() => {})
-              }
-            }
-            if (event.kind === 'esc') setPicking(false)
+      void callAgent<{ events?: AgentEvent[] }>('drain').then((result) => {
+        const events = result?.events ?? []
+        for (const event of events) {
+          if (event.kind === 'pick') {
+            beginPick(event.ref)
+            void callAgent('pick', false)
           }
-        },
-        () => {},
-      )
+          if (event.kind === 'esc') setPicking(false)
+        }
+      })
     }, 170)
     return () => window.clearInterval(timer)
-  }, [picking, beginPick])
+  }, [picking, beginPick, callAgent])
 
   React.useEffect(() => {
     if (!menuOpen) return undefined
     const raf = window.requestAnimationFrame(() => {
       const active = menuRef.current?.querySelector('[data-active="true"]')
-      if (active instanceof HTMLElement) active.scrollIntoView({ block: 'nearest' })
+      if (active instanceof HTMLElement && typeof active.scrollIntoView === 'function') {
+        active.scrollIntoView({ block: 'nearest' })
+      }
     })
     const onPointer = (event: PointerEvent): void => {
       const target = event.target as Node | null
       if (target === null) return
       if (menuRef.current?.contains(target) === true) return
-      if (deviceBtnRef.current?.contains(target) === true) return
+      if (sizeBtnRef.current?.contains(target) === true) return
       setMenuOpen(false)
     }
     const onKey = (event: KeyboardEvent): void => {
@@ -816,6 +1020,34 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
       document.removeEventListener('pointerdown', onPointer, true)
       document.removeEventListener('keydown', onKey, true)
     }
+  }, [menuOpen])
+
+  // The zoom menu follows the same rules as the other popovers.
+  React.useEffect(() => {
+    if (!zoomOpen) return undefined
+    const onPointer = (event: PointerEvent): void => {
+      const target = event.target as Node | null
+      if (target === null) return
+      if (zoomMenuRef.current?.contains(target) === true) return
+      if (zoomBtnRef.current?.contains(target) === true) return
+      setZoomOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setZoomOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [zoomOpen])
+
+  // Closing the device panel discards an unfinished size edit.
+  React.useEffect(() => {
+    if (menuOpen) return
+    cancelSizeRef.current = false
+    setSizeDraft(null)
   }, [menuOpen])
 
   React.useEffect(() => {
@@ -979,17 +1211,28 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   }
 
   const togglePick = (): void => {
-    if (!isDesktop) {
-      showToast(t('unsupported.web'))
+    if (!canPick) {
+      showToast(isDesktop ? t('pick.notReady') : t('pick.needAgent'))
       return
     }
     const next = !picking
     setPicking(next)
     if (!next && pendingRef.current !== null) closePickPopover()
-    const el = webviewRef.current
-    if (el !== null && readyRef.current) {
-      el.executeJavaScript(callCode('pick', next), false).catch(() => {})
+    void callAgent('pick', next)
+  }
+
+  const toggleDeviceMode = (): void => {
+    if (!responsive) {
+      setDevice((d) => ({ ...d, presetId: 'responsive' }))
+      return
     }
+    const previous = lastDeviceRef.current
+    if (previous !== null) {
+      setDevice(previous)
+      return
+    }
+    const phone = PRESET_BY_ID.get('iphone-15')
+    if (phone !== undefined) setDevice((d) => applyPreset(d, phone))
   }
 
   const changePreset = (id: string): void => {
@@ -1002,46 +1245,158 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     setDevice((d) => applyPreset(d, next))
   }
 
-  const editSize = (next: { width?: number; height?: number }): void => {
-    setDevice((d) => ({
-      ...d,
-      presetId: 'custom',
-      width: clamp(next.width ?? d.width, 120, 4096),
-      height: clamp(next.height ?? d.height, 120, 4096),
+  const landscape = isLandscape(device, preset)
+  const frameAllowed = preset !== null && (preset.group === 'phone' || preset.group === 'tablet')
+  const frameBorder = device.frame && frameAllowed ? 16 : 0
+  const deviceLabel =
+    preset === null
+      ? responsive
+        ? t('device.responsive')
+        : t('device.custom')
+      : landscape
+        ? `${preset.title} · ${t('device.landscape')}`
+        : preset.title
+  const showStart = currentUrl === '' && guest !== 'acquiring'
+  const showSizeBar = !responsive && !showStart
+
+  React.useEffect(() => {
+    if (showSizeBar) return
+    setZoomOpen(false)
+    setMenuOpen(false)
+  }, [showSizeBar])
+
+  // Opening the device list anchors it under whichever button opened it.
+  React.useLayoutEffect(() => {
+    if (!menuOpen) return
+    const anchor = sizeBtnRef.current
+    const host = anchor?.parentElement
+    if (!anchor || !host) return
+    const width = Math.min(324, host.clientWidth - 16)
+    const left = Math.min(Math.max(8, anchor.offsetLeft), Math.max(8, host.clientWidth - width - 8))
+    setMenuLeft(left)
+  }, [menuOpen, showSizeBar])
+  const widthValue = sizeDraft?.w ?? String(size.w)
+  const heightValue = sizeDraft?.h ?? String(size.h)
+
+  const beginSizeEdit = (): void => {
+    cancelSizeRef.current = false
+    setSizeDraft((draft) => draft ?? { w: String(size.w), h: String(size.h) })
+  }
+
+  const changeSize = (key: 'w' | 'h', value: string): void => {
+    setSizeDraft((draft) => ({
+      w: draft?.w ?? String(size.w),
+      h: draft?.h ?? String(size.h),
+      [key]: value,
     }))
   }
 
-  const groups: Array<{ key: Preset['group']; label: string; items: Preset[] }> = [
-    { key: 'phone', label: t('device.group.phone'), items: PRESETS.filter((p) => p.group === 'phone') },
-    { key: 'tablet', label: t('device.group.tablet'), items: PRESETS.filter((p) => p.group === 'tablet') },
-    { key: 'laptop', label: t('device.group.laptop'), items: PRESETS.filter((p) => p.group === 'laptop') },
-    { key: 'desktop', label: t('device.group.desktop'), items: PRESETS.filter((p) => p.group === 'desktop') },
-  ]
-
-  const frameAllowed = preset !== null && (preset.group === 'phone' || preset.group === 'tablet')
-  const frameBorder = device.frame && frameAllowed ? 16 : 0
-  const deviceLabel = preset?.title ?? (responsive ? t('device.responsive') : t('device.custom'))
-  const zoomLabel = device.zoom === 'fit' ? `${Math.round(scale * 100)}%` : `${Math.round(device.zoom * 100)}%`
-  const showStart = currentUrl === '' && guest !== 'acquiring'
-  const zoomValues = ['fit', 0.5, 0.75, 1] as const
-  const cycleZoom = (): void =>
-    setDevice((d) => {
-      const index = zoomValues.indexOf(d.zoom as (typeof zoomValues)[number])
-      return { ...d, zoom: zoomValues[(index + 1) % zoomValues.length] }
-    })
-
-  const startCustom = (patch: { width?: number; height?: number }): void => {
-    setDevice((d) => {
-      const baseW = d.presetId === 'responsive' ? size.w : d.width
-      const baseH = d.presetId === 'responsive' ? size.h : d.height
-      return {
-        ...d,
-        presetId: 'custom',
-        width: clamp(patch.width ?? baseW, 120, 4096),
-        height: clamp(patch.height ?? baseH, 120, 4096),
-      }
-    })
+  const commitSize = (): void => {
+    if (cancelSizeRef.current) {
+      cancelSizeRef.current = false
+      setSizeDraft(null)
+      return
+    }
+    const draft = sizeDraft
+    if (draft === null) return
+    setSizeDraft(null)
+    const w = Math.round(Number(draft.w))
+    const h = Math.round(Number(draft.h))
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return
+    setDevice((d) => ({
+      ...d,
+      presetId: 'custom',
+      width: clamp(w, 120, 4096),
+      height: clamp(h, 120, 4096),
+    }))
   }
+
+  const sizeKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, key: 'w' | 'h'): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      event.currentTarget.blur()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      cancelSizeRef.current = true
+      setSizeDraft(null)
+      event.currentTarget.blur()
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      const delta = (event.key === 'ArrowUp' ? 1 : -1) * (event.shiftKey ? 10 : 1)
+      const current = Number(event.currentTarget.value)
+      const next = Math.max(120, Math.min(4096, (Number.isFinite(current) ? current : 0) + delta))
+      changeSize(key, String(next))
+    }
+  }
+
+  const guidePoint = (event: { clientX: number; clientY: number }, axis: 'x' | 'y'): number => {
+    const canvas = canvasRef.current
+    if (canvas === null) return 0
+    const rect = canvas.getBoundingClientRect()
+    const factor = scaleRef.current > 0 ? scaleRef.current : 1
+    return axis === 'x' ? (event.clientX - rect.left) / factor : (event.clientY - rect.top) / factor
+  }
+
+  const removeGuide = (axis: 'x' | 'y', index: number): void => {
+    setGuides((current) => ({ ...current, [axis]: current[axis].filter((_, i) => i !== index) }))
+  }
+
+  const startGuide = (event: React.PointerEvent, axis: 'x' | 'y', index: number | null): void => {
+    if (event.button !== 0 || guideDrag !== null) return
+    event.preventDefault()
+    event.stopPropagation()
+    // Capture the pointer: once the drag crosses the page (an iframe/webview),
+    // the parent document would otherwise stop receiving pointer events.
+    try {
+      ;(event.currentTarget as Element).setPointerCapture(event.pointerId)
+    } catch {
+      /* older engines */
+    }
+    const max = axis === 'x' ? size.w : size.h
+    const slot = index ?? guides[axis].length
+    if (index === null) {
+      const initial = Math.round(Math.min(Math.max(guidePoint(event, axis), 0), max))
+      setGuides((current) => ({ ...current, [axis]: [...current[axis], initial] }))
+    }
+    let raw = guidePoint(event, axis)
+    setGuideDrag({ axis, index: slot })
+    const onMove = (moveEvent: PointerEvent): void => {
+      raw = guidePoint(moveEvent, axis)
+      const next = Math.round(Math.min(Math.max(raw, 0), max))
+      setGuides((current) => {
+        const list = [...current[axis]]
+        if (list[slot] === undefined) return current
+        list[slot] = next
+        return { ...current, [axis]: list }
+      })
+    }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('blur', onUp)
+      setGuideDrag(null)
+      // Dropping the line back outside the page removes it, like a design tool.
+      if (!Number.isFinite(raw) || raw < -6 || raw > max + 6) {
+        setGuides((current) => ({ ...current, [axis]: current[axis].filter((_, i) => i !== slot) }))
+      }
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    window.addEventListener('blur', onUp)
+  }
+
+  // Guides live in page pixels; keep them inside the viewport when the device changes.
+  React.useEffect(() => {
+    setGuides((current) => {
+      const x = current.x.filter((value) => value <= size.w)
+      const y = current.y.filter((value) => value <= size.h)
+      if (x.length === current.x.length && y.length === current.y.length) return current
+      return { x, y }
+    })
+  }, [size.w, size.h])
 
   const POP_W = Math.min(340, Math.max(240, (avail.w || 360) - 24))
   const POP_H = 92
@@ -1056,6 +1411,73 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
   const statusParts = [formatSize(size.w, size.h)]
   statusParts.push(`${Math.round(scale * 100)}%`)
   statusParts.push(device.uaMobile ? t('status.uaMobile') : t('status.uaDesktop'))
+
+  const deviceMenu = menuOpen ? (
+      <div
+        className="dbs-menu"
+        ref={menuRef}
+        role="dialog"
+        aria-label={t('device.presets')}
+        style={{ left: menuLeft }}
+      >
+        <div className="dbs-menuScroll">
+          <button
+            className="dbs-row"
+            data-active={responsive}
+            onClick={() => {
+              changePreset('responsive')
+              setMenuOpen(false)
+            }}
+          >
+            <span className="dbs-rowMain">
+              <span className="dbs-rowCheck">{responsive ? <IconCheck /> : null}</span>
+              <span>{t('device.responsive')}</span>
+            </span>
+            <small>{t('device.fill')}</small>
+          </button>
+          {PRESETS.map((item) => (
+            <button
+              key={item.id}
+              className="dbs-row"
+              data-active={device.presetId === item.id}
+              onClick={() => {
+                changePreset(item.id)
+                setMenuOpen(false)
+              }}
+            >
+              <span className="dbs-rowMain">
+                <span className="dbs-rowCheck">{device.presetId === item.id ? <IconCheck /> : null}</span>
+                <span>{item.title}</span>
+              </span>
+              <small>
+                {item.width} × {item.height}
+              </small>
+            </button>
+          ))}
+        </div>
+
+        <div className="dbs-section">
+          <div className="dbs-sectionLabel">{t('device.simulate')}</div>
+          <div className="dbs-toggleRow">
+            <span>{t('device.ua')}</span>
+            <Switch
+              on={device.uaMobile}
+              label={t('device.ua')}
+              onChange={(next) => setDevice((d) => ({ ...d, uaMobile: next }))}
+            />
+          </div>
+          <div className="dbs-toggleRow" data-disabled={!frameAllowed}>
+            <span>{t('device.frame')}</span>
+            <Switch
+              on={device.frame && frameAllowed}
+              disabled={!frameAllowed}
+              label={t('device.frame')}
+              onChange={(next) => setDevice((d) => ({ ...d, frame: next }))}
+            />
+          </div>
+        </div>
+      </div>
+  ) : null
 
   return (
     <div className="dbs-root">
@@ -1180,6 +1602,49 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         ) : null}
         </div>
 
+        <span className="dbs-barSep" aria-hidden="true" />
+
+        <button
+          className="dbs-iconBtn dbs-toolBtn"
+          data-on={picking}
+          aria-disabled={!canPick}
+          aria-label={picking ? t('toolbar.pickOn') : t('toolbar.pick')}
+          title={
+            !canPick
+              ? isDesktop
+                ? t('pick.notReady')
+                : t('pick.needAgent')
+              : picking
+                ? t('toolbar.pickOn')
+                : t('toolbar.pick')
+          }
+          onClick={togglePick}
+        >
+          <IconPick />
+        </button>
+
+        <button
+          className="dbs-iconBtn dbs-toolBtn dbs-deviceBtn"
+          data-on={!responsive}
+          aria-pressed={!responsive}
+          aria-label={t('device.toggle')}
+          title={!responsive ? t('device.toggleOff') : t('device.toggleOn')}
+          onClick={toggleDeviceMode}
+        >
+          <IconResponsive />
+        </button>
+
+        <button
+          className="dbs-iconBtn dbs-toolBtn dbs-rulerBtn"
+          data-on={device.rulers}
+          aria-pressed={device.rulers}
+          aria-label={t('toolbar.rulers')}
+          title={t('toolbar.rulers')}
+          onClick={() => setDevice((d) => ({ ...d, rulers: !d.rulers }))}
+        >
+          <IconRuler />
+        </button>
+
         <button
           ref={moreBtnRef}
           className="dbs-iconBtn dbs-moreBtn"
@@ -1223,154 +1688,123 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
 
       </div>
 
-      {/* device bar */}
-      {!showStart ? (
-      <div className="dbs-deviceBar">
-        <button
-          ref={deviceBtnRef}
-          className="dbs-chip dbs-deviceChip"
-          aria-expanded={menuOpen}
-          aria-label={t('device.presets')}
-          onClick={() => setMenuOpen((value) => !value)}
-        >
-          <IconDevice group={preset?.group ?? 'desktop'} />
-          <span>{deviceLabel}</span>
-          <span className="dbs-chevron">
+      {showSizeBar ? (
+        <div className="dbs-sizeBar">
+          <button
+            ref={sizeBtnRef}
+            className="dbs-sizeDevice"
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            title={t('device.presets')}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            <span>{deviceLabel}</span>
             <IconChevron />
-          </span>
-        </button>
+          </button>
 
-        <span className="dbs-chip dbs-sizeChip">
-          {size.w} × {size.h}
-        </span>
+          <span className="dbs-sizeSep" aria-hidden="true" />
 
-        <button className="dbs-chip dbs-zoomChip" onClick={cycleZoom} title={t('device.zoom')}>
-          {zoomLabel}
-        </button>
+          <div
+            className="dbs-sizeRow"
+            onBlur={(event) => {
+              if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+              commitSize()
+            }}
+          >
+            <input
+              className="dbs-num"
+              inputMode="numeric"
+              spellCheck={false}
+              autoComplete="off"
+              value={widthValue}
+              aria-label={t('toolbar.width')}
+              title={t('toolbar.width')}
+              onFocus={beginSizeEdit}
+              onChange={(event) => changeSize('w', event.target.value)}
+              onKeyDown={(event) => sizeKeyDown(event, 'w')}
+            />
+            <span className="dbs-times">×</span>
+            <input
+              className="dbs-num"
+              inputMode="numeric"
+              spellCheck={false}
+              autoComplete="off"
+              value={heightValue}
+              aria-label={t('toolbar.height')}
+              title={t('toolbar.height')}
+              onFocus={beginSizeEdit}
+              onChange={(event) => changeSize('h', event.target.value)}
+              onKeyDown={(event) => sizeKeyDown(event, 'h')}
+            />
+          </div>
 
-        <div className="dbs-spacer" />
+          <span className="dbs-sizeSep" aria-hidden="true" />
 
-        <button
-          className="dbs-pickBtn"
-          data-on={picking}
-          disabled={!isDesktop}
-          title={!isDesktop ? t('unsupported.web') : t('toolbar.pick')}
-          onClick={togglePick}
-        >
-          <IconPick />
-          <span>{picking ? t('toolbar.pickActive') : t('toolbar.pickShort')}</span>
-        </button>
-
-        {menuOpen ? (
-          <div className="dbs-menu" ref={menuRef} role="dialog" aria-label={t('device.presets')}>
-            <div className="dbs-menuScroll">
-              <button
-                className="dbs-row"
-                data-active={responsive}
-                onClick={() => {
-                  changePreset('responsive')
-                  setMenuOpen(false)
-                }}
-              >
-                <span>{t('device.responsive')}</span>
-                <small>{t('device.fill')}</small>
-              </button>
-              {groups.map((group) => (
-                <React.Fragment key={group.key}>
-                  <div className="dbs-sectionLabel">{group.label}</div>
-                  {group.items.map((item) => (
-                    <button
-                      key={item.id}
-                      className="dbs-row"
-                      data-active={device.presetId === item.id}
-                      onClick={() => {
-                        changePreset(item.id)
-                        setMenuOpen(false)
-                      }}
-                    >
-                      <span>{item.title}</span>
-                      <small>
-                        {item.width}×{item.height}
-                      </small>
-                    </button>
-                  ))}
-                </React.Fragment>
-              ))}
-            </div>
-
-            <div className="dbs-section">
-              <div className="dbs-sectionLabel">{t('device.customSize')}</div>
-              <div className="dbs-sizeRow">
-                <input
-                  className="dbs-num"
-                  type="number"
-                  min={120}
-                  max={4096}
-                  value={responsive ? size.w : device.width}
-                  aria-label={t('toolbar.width')}
-                  onChange={(event) => startCustom({ width: Number(event.target.value) })}
-                />
-                <span className="dbs-times">×</span>
-                <input
-                  className="dbs-num"
-                  type="number"
-                  min={120}
-                  max={4096}
-                  value={responsive ? size.h : device.height}
-                  aria-label={t('toolbar.height')}
-                  onChange={(event) => startCustom({ height: Number(event.target.value) })}
-                />
+          <div className="dbs-zoomWrap">
+            <button
+              ref={zoomBtnRef}
+              className="dbs-zoomBtn"
+              aria-haspopup="listbox"
+              aria-expanded={zoomOpen}
+              aria-label={t('device.zoom')}
+              onClick={() => setZoomOpen((value) => !value)}
+            >
+              <span>{device.zoom === 'fit' ? t('zoom.fit') : `${Math.round(device.zoom * 100)}%`}</span>
+              <IconChevron />
+            </button>
+            {zoomOpen ? (
+              <div className="dbs-zoomMenu" ref={zoomMenuRef} role="listbox" aria-label={t('device.zoom')}>
                 <button
-                  className="dbs-iconBtn"
-                  title={t('toolbar.rotate')}
-                  aria-label={t('toolbar.rotate')}
-                  disabled={responsive}
-                  onClick={() => setDevice((d) => rotate(d))}
+                  className="dbs-zoomRow"
+                  role="option"
+                  aria-selected={device.zoom === 'fit'}
+                  data-active={device.zoom === 'fit'}
+                  onClick={() => {
+                    setDevice((d) => ({ ...d, zoom: 'fit' }))
+                    setZoomOpen(false)
+                  }}
                 >
-                  <IconRotate />
+                  <span className="dbs-zoomCheck">{device.zoom === 'fit' ? <IconCheck /> : null}</span>
+                  <span>{t('zoom.fit')}</span>
+                  <span className="dbs-zoomValue">{Math.round(scale * 100)}%</span>
                 </button>
-              </div>
-            </div>
-
-            <div className="dbs-section">
-              <div className="dbs-sectionLabel">{t('device.zoom')}</div>
-              <div className="dbs-seg">
-                {zoomValues.map((value) => (
+                {ZOOM_STEPS.map((step) => (
                   <button
-                    key={String(value)}
-                    className="dbs-segBtn"
-                    data-active={device.zoom === value}
-                    onClick={() => setDevice((d) => ({ ...d, zoom: value }))}
+                    key={step}
+                    className="dbs-zoomRow"
+                    role="option"
+                    aria-selected={device.zoom === step}
+                    data-active={device.zoom === step}
+                    onClick={() => {
+                      setDevice((d) => ({ ...d, zoom: step }))
+                      setZoomOpen(false)
+                    }}
                   >
-                    {value === 'fit' ? t('zoom.fit') : `${Math.round(value * 100)}%`}
+                    <span className="dbs-zoomCheck">{device.zoom === step ? <IconCheck /> : null}</span>
+                    <span>{Math.round(step * 100)}%</span>
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="dbs-section">
-              <div className="dbs-sectionLabel">{t('device.simulate')}</div>
-              <div className="dbs-toggleRow">
-                <span>{t('device.ua')}</span>
-                <Switch
-                  on={device.uaMobile}
-                  label={t('device.ua')}
-                  onChange={(next) => setDevice((d) => ({ ...d, uaMobile: next }))}
-                />
-              </div>
-              <div className="dbs-toggleRow" data-disabled={!frameAllowed}>
-                <span>{t('device.frame')}</span>
-                <Switch
-                  on={device.frame && frameAllowed}
-                  disabled={!frameAllowed}
-                  label={t('device.frame')}
-                  onChange={(next) => setDevice((d) => ({ ...d, frame: next }))}
-                />
-              </div>
-            </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
+          {deviceMenu}
+        </div>
+      ) : null}
+
+      {picking && pendingPick === null ? (
+        <div className="dbs-pickBar" role="status">
+          <span className="dbs-pickBarIcon"><IconPick /></span>
+          <span className="dbs-pickBarText">{t('hint.pickShort')}</span>
+          <button
+            type="button"
+            className="dbs-pickBarClose"
+            aria-label={t('toolbar.pickOn')}
+            title={t('toolbar.pickOn')}
+            onClick={togglePick}
+          >
+            ×
+          </button>
+        </div>
       ) : null}
 
       {/* viewport */}
@@ -1378,15 +1812,19 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         <div
           ref={stageRef}
           className={`dbs-stage${device.frame && frameAllowed && !responsive ? ' dbs-frame' : ''}`}
+          data-picking={picking ? 'true' : undefined}
           style={{
             ...(responsive
               ? { width: '100%', height: '100%' }
               : { width: Math.max(1, size.w * scale) + frameBorder, height: Math.max(1, size.h * scale) + frameBorder }),
+            // The pick border hugs the page content, inside the device frame.
+            ['--dbs-frame-inset' as string]: `${device.frame && frameAllowed && !responsive ? 8 : 0}px`,
             visibility: showStart ? 'hidden' : 'visible',
           }}
         >
-          {device.frame && frameAllowed && !responsive && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
+          {device.frame && frameAllowed && !responsive && !landscape && preset?.cutout !== undefined ? <div className="dbs-notch" /> : null}
           <div
+            ref={canvasRef}
             className="dbs-canvas"
             style={
               responsive
@@ -1398,15 +1836,39 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
             {!isDesktop && iframeUrl !== '' ? (
               <iframe
                 key={iframeKey}
+                ref={iframeRef}
                 className="dbs-iframe"
                 src={iframeUrl}
+                onLoad={() => {
+                  webAgentRef.current?.reset()
+                  webAgentRef.current?.greet()
+                }}
                 title={t('tab.title')}
                 sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                 referrerPolicy="no-referrer"
               />
             ) : null}
           </div>
+          {!responsive && !picking ? (
+            <div className="dbs-sizeBadge">
+              {Math.round(size.w)}px × {Math.round(size.h)}px
+            </div>
+          ) : null}
         </div>
+
+        {device.rulers && rulerBox !== null && !showStart ? (
+          <RulerOverlay
+            box={rulerBox}
+            width={size.w}
+            height={size.h}
+            scale={scale}
+            guides={guides}
+            dragging={guideDrag}
+            hint={t('ruler.hint')}
+            onStartGuide={startGuide}
+            onRemoveGuide={removeGuide}
+          />
+        ) : null}
 
         {pendingPick !== null ? (
           <div
@@ -1518,12 +1980,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
           </div>
         ) : null}
         {loadError !== '' ? <div className="dbs-error">{loadError}</div> : null}
-        {picking && isDesktop && pendingPick === null ? (
-          <div className="dbs-pickHint">
-            <IconPick />
-            {t('hint.pickShort')}
-          </div>
-        ) : null}
         {toast !== '' ? <div className="dbs-toast">{toast}</div> : null}
       </div>
 

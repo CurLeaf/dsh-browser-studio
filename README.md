@@ -2,7 +2,8 @@
 
 Turn the DeepSeek Harness built-in browser into a browser studio: **preview at device sizes**, **pick page elements**, and drop their context straight into the session.
 
-- Device toolbar: presets, custom width/height, rotate, fit-to-panel, device frame, mobile UA
+- The phone icon in the address bar toggles device emulation (on: last device size, off: fill); the size bar's dropdown switches models, plus device frame, mobile UA and pixel rulers with draggable guides
+- A size bar under the address bar (editable width/height + zoom) appears whenever a device size is active, and the simulated page carries a `393px × 852px` badge
 - Element picker: hover highlight, click to select, captures selector, DOM path, text, box, styles and React component name (Desktop)
 - Pick-to-chat: the composer is summoned and focused, and the element shows up as a removable **chip** above it
 - **Nothing is written into the editor**: the element details are injected by the host as a hidden context message on the next step
@@ -15,7 +16,32 @@ Turn the DeepSeek Harness built-in browser into a browser studio: **preview at d
 | Environment | Device sizes | Element picking | Into the chat |
 |---|---|---|---|
 | DSH Desktop ≥ 0.2.1-rc.1 | ✅ | ✅ | ✅ |
-| DSH Web | ✅ (iframe) | ❌ Desktop only | ✅ |
+| DSH Web | ✅ (iframe) | ✅ when the page loads `agent.js`, otherwise disabled | ✅ |
+
+### Picking in the Web build
+
+The parent page cannot read a cross-origin iframe. Load the page agent in the previewed app instead; the agent lives in the page, draws the highlights, and talks to the studio over `postMessage`:
+
+```html
+<script src="http://127.0.0.1:3080/browser-studio/agent.js"></script>
+```
+
+The studio serves that bundle itself, so no extra install is needed. Dev-only; keep it out of production builds. If the app's CSP blocks cross-origin scripts, either allow the studio host in `script-src` or copy `lib/agent.js` into the app's public folder and serve it from the same origin.
+
+### Vite projects
+
+The injector ships as a Vite plugin, so the app's HTML stays untouched:
+
+```ts
+// vite.config.ts
+import dshStudioAgent from 'dsh-browser-studio/vite'
+
+export default defineConfig({
+  plugins: [dshStudioAgent()],
+})
+```
+
+`apply: 'serve'` keeps it out of production builds. Use another host with `dshStudioAgent({ origin: 'http://127.0.0.1:3081' })` or the `DSH_STUDIO_URL` environment variable.
 
 ## Install
 
@@ -34,8 +60,8 @@ dsh plugin --profile desktop add .
 ## Usage
 
 1. Open **Browser** in the right sidebar (`Ctrl/Cmd+T`) and enter `localhost:5173`.
-2. Use the second toolbar row to pick a device, or type a width/height.
-3. `UA` switches to a mobile user agent (reloads once); `▣` draws a device frame; `Fit` scales the viewport into the panel.
+2. The phone icon in the address bar toggles device emulation: off fills the panel, on restores the last device (iPhone 15 the first time) and shows the size bar. The device name in the size bar opens the model list; edit the numbers and press `Enter` (or blur) to apply. Choosing "Responsive" hides the bar and fills the panel again.
+3. The ruler and pick icons next to it toggle page-pixel rulers and element picking. With rulers on, drag downward from the top ruler for a horizontal guide (rightward from the side ruler for a vertical one); drag it back out or double-click it to remove. UA and the device frame are switches in the device list.
 4. Press `⊕` to start picking: hover highlights the element; clicking outlines it in blue and opens an **annotation card** that follows the element.
 5. Type the change ("make the corners smaller") and press `Enter` or `→`; `Esc` / `×` cancels. The composer is focused and a chip appears above it, while the editor gets one compact line:
 
@@ -48,10 +74,11 @@ dsh plugin --profile desktop add .
 ## Deliberate limits
 
 - **No DPR or touch emulation.** DSH exposes no CDP seam to plugins; only the viewport size and the UA are real.
-- **Cross-origin iframes stay opaque.** Browser security model; Cursor has the same limit.
+- **Cross-origin iframes stay opaque** unless they opt in by loading `agent.js`; without that script the studio has no way into the page, and the pick button stays disabled.
 - **Page data is untrusted.** The block is generated from page DOM inside the page's main world; review before sending.
-- **No picking on Web.** Without a guest lease there is no injection channel.
-- **Context travels through the host.** The client posts details to `/browser-studio/api/refs`; the host appends a hidden `user` message with a non-`user` source kind on the next `agent/pre-step`, so neither the composer nor a chat bubble carries the element data.
+- **Web picking is opt-in.** It needs the page to load `/browser-studio/agent.js`; Desktop needs no such change.
+- **Rulers are drawn by the studio, not the page.** Ticks come from the guest's measured box and use page CSS pixels; nothing is injected, so they also work on Web (iframe).
+- **Context travels through the host.** The client posts details to `/browser-studio/api/refs`; the host appends a hidden `user` message with a non-`user` source kind on the next `agent/pre-step`. The composer only carries a compact `〔引用 N · label〕` line so the sent bubble shows what travelled with it.
 - **Unsent references expire** after 30 minutes on the host; removing a chip deletes it immediately.
 
 ## How it works
@@ -60,6 +87,8 @@ dsh plugin --profile desktop add .
 - Desktop acquires a guest: `window.dshDesktop.browser.acquire(workspace)` → `<webview src="about:blank#lease">`.
 - Injects a page agent (`executeJavaScript`): Shadow DOM overlay, picker, numbered pins; the client drains it every 170ms.
 - The webview's CSS box is the guest viewport (media queries are real); a `transform: scale()` wrapper fits it into the panel.
+- Rulers re-measure that box on resize and draw ticks at `scale` in the device bar's overlay, so page and ruler stay aligned at any zoom.
+- Web picking: the studio posts `hello`/commands to the frame, the page agent answers over `postMessage` (source-window and version checked), and the parent positions the annotation card from the rect the agent reports.
 - Into the chat: a `conversation.input.dock` component captures `inputActions.setDraft`; falls back to `conversation.send()`.
 - Device data comes from Chrome DevTools `EmulatedDevices.ts` (BSD-3); React metadata comes from [bippy](https://github.com/aidenybai/bippy) (MIT). See `NOTICE`.
 
@@ -77,7 +106,7 @@ npm run test:all
 
 ### Verified so far
 
-- `vitest`: URL normalization, fit/rotate math, element block, draft bridge, apply wiring (13 tests).
+- `vitest`: URL normalization, fit/rotate math, size/zoom/rulers editing in the built component, element block, draft bridge, apply wiring (37 tests).
 - `test/bundle.e2e.mjs`: loads the **built bundle** in Chrome with a stub module loader + fake Cordis ctx and asserts the browser takeover, tab body and dock registrations.
 - `test/agent.e2e.mjs` / `test/react-agent.e2e.mjs`: real Chrome, real clicks — picking, payload, capture-phase guard, pins, Esc; the React fixture proves bippy resolves component names.
 - `test/electron/spike.mjs`: on **Electron 44.7** (same major as DSH Desktop) it proves the webview viewport equals its CSS box, CSS-transform scaling renders and routes input in scaled coordinates, and `setUserAgent` + reload applies.

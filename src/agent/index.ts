@@ -11,6 +11,7 @@
  */
 import { getDisplayName, getFiberFromHostInstance, getLatestFiber, type Fiber } from 'bippy'
 import { getOwnerStack, getSource } from 'bippy/source'
+import { installBridge } from './bridge'
 import type { AgentEvent, ElementRef, Pin } from '../shared/types'
 
 const KEY = '__DSH_STUDIO_AGENT__'
@@ -308,11 +309,23 @@ function boot(): void {
     if (hint !== null) hint.style.display = 'none'
   }
 
+  /** The page itself, full-page wrappers and huge scroll boxes are structure. */
+  function isPageChrome(el: Element): boolean {
+    if (el === doc.documentElement || el === doc.body) return true
+    const r = el.getBoundingClientRect()
+    const covers = r.width >= window.innerWidth * 0.96 && r.height >= window.innerHeight * 0.96
+    return covers || r.width > window.innerWidth * 2 || r.height > window.innerHeight * 2
+  }
+
   function onMove(event: MouseEvent): void {
     if (!picking) return
     const target = event.target
     if (!(target instanceof Element)) return
     if (target.closest(`[${ATTR_HOST}]`) !== null) return
+    if (isPageChrome(target)) {
+      showHover(null)
+      return
+    }
     showHover(target)
   }
 
@@ -324,12 +337,14 @@ function boot(): void {
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
+    if (isPageChrome(target)) return
     const ref = snapshot(target)
     events.push({ kind: 'pick', ref })
     if (hint !== null) {
       hint.textContent = copy.added
+      hint.style.display = 'block'
       window.setTimeout(() => {
-        if (hint !== null && picking) hint.textContent = copy.pick
+        if (hint !== null && picking) hint.style.display = 'none'
       }, 900)
     }
     showHover(null)
@@ -342,31 +357,48 @@ function boot(): void {
     }
   }
 
+  const onLeave = (event: MouseEvent): void => {
+    if (!picking) return
+    if (event.relatedTarget === null) showHover(null)
+  }
+  const onBlur = (): void => {
+    if (picking) showHover(null)
+  }
+
   function bind(): void {
     ensureHost()
     doc.addEventListener('mousemove', onMove, true)
     doc.addEventListener('click', onClick, true)
     doc.addEventListener('keydown', onKey, true)
+    window.addEventListener('mouseout', onLeave, true)
+    window.addEventListener('blur', onBlur)
   }
 
   function unbind(): void {
     doc.removeEventListener('mousemove', onMove, true)
     doc.removeEventListener('click', onClick, true)
     doc.removeEventListener('keydown', onKey, true)
+    window.removeEventListener('mouseout', onLeave, true)
+    window.removeEventListener('blur', onBlur)
   }
+
+  const PICK_CURSOR =
+    'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Cpath d=\'M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z\' fill=\'%234f9cff\' stroke=\'%23fff\' stroke-width=\'1.5\'/%3E%3Ccircle cx=\'8\' cy=\'10.5\' r=\'1.2\' fill=\'%23fff\'/%3E%3Ccircle cx=\'12\' cy=\'10.5\' r=\'1.2\' fill=\'%23fff\'/%3E%3Ccircle cx=\'16\' cy=\'10.5\' r=\'1.2\' fill=\'%23fff\'/%3E%3C/svg%3E") 4 21, crosshair'
+  let previousCursor = ''
 
   function setPick(on: boolean): void {
     picking = on
     ensureHost()
     if (on) {
+      previousCursor = doc.documentElement.style.cursor
+      doc.documentElement.style.cursor = PICK_CURSOR
       bind()
-      if (hint !== null) {
-        hint.textContent = copy.pick
-        hint.style.display = 'block'
-      }
+      if (hint !== null) hint.style.display = 'none'
     } else {
       unbind()
       hideOverlay()
+      doc.documentElement.style.cursor = previousCursor
+      previousCursor = ''
     }
   }
 
@@ -489,6 +521,10 @@ function boot(): void {
   }
 
   root[KEY] = { version: VERSION, call, rebind }
+
+  // Embedded by a page script (Web preview): talk to the parent window.
+  // Desktop injection lives in a top-level guest window, so this is skipped.
+  if (window.parent !== window) installBridge(window, VERSION, call)
 }
 
 boot()

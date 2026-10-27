@@ -7,7 +7,7 @@
  * while the chat bubble and the draft stay clean.
  */
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -27,6 +27,8 @@ const status = {
   lastPostAt: null,
   lastInjectionAt: null,
   lastError: null,
+  agentRoute: false,
+  agentGets: 0,
 }
 
 function flushStatus() {
@@ -39,6 +41,8 @@ function flushStatus() {
 }
 
 const ROUTE = '/browser-studio/api/refs'
+const AGENT_ROUTE = '/browser-studio/agent.js'
+const AGENT_PATH = new URL('./lib/agent.js', import.meta.url)
 const SOURCE_KIND = 'browser-studio'
 const MAX_BLOCKS = 20
 const MAX_BLOCK_CHARS = 8000
@@ -151,6 +155,45 @@ export function apply(ctx) {
       'browser-studio: refs route',
     )
     status.route = true
+    flushStatus()
+  }
+
+  if (server !== undefined && typeof server.register === 'function') {
+    ctx.effect(
+      () =>
+        server.register({
+          kind: 'exact',
+          path: AGENT_ROUTE,
+          handler: async (request, response) => {
+            if (request.method !== 'GET' && request.method !== 'HEAD') {
+              response.writeHead(405, { allow: 'GET, HEAD' })
+              response.end()
+              return
+            }
+            try {
+              const body = readFileSync(AGENT_PATH)
+              response.writeHead(200, {
+                'content-type': 'text/javascript; charset=utf-8',
+                'content-length': String(body.byteLength),
+                'cache-control': 'no-cache',
+                'access-control-allow-origin': '*',
+                'cross-origin-resource-policy': 'cross-origin',
+                'x-content-type-options': 'nosniff',
+              })
+              response.end(request.method === 'HEAD' ? undefined : body)
+              status.agentGets += 1
+              flushStatus()
+            } catch {
+              status.lastError = 'agent bundle missing'
+              flushStatus()
+              response.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' })
+              response.end('agent bundle missing; run npm run build')
+            }
+          },
+        }),
+      'browser-studio: page agent route',
+    )
+    status.agentRoute = true
     flushStatus()
   }
 
