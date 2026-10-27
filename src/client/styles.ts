@@ -144,13 +144,6 @@ export const CSS = `
 .dbs-sizeBar .dbs-sizeRow { flex: none; padding: 0; gap: 4px; }
 .dbs-sizeSep { width: 1px; height: 18px; flex: none; background: var(--dsw-alias-border-l2); }
 .dbs-sizeBar .dbs-num { width: 50px; height: 26px; padding: 0 3px; font-size: 11.5px; }
-.dbs-sizeBadge {
-  position: absolute; top: 8px; right: 8px; z-index: 4; pointer-events: none;
-  padding: 1px 6px; border-radius: 5px; font-size: 10px; line-height: 1.4;
-  font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 86%, transparent);
-  border: 1px solid var(--dsw-alias-border-l2);
-}
 
 /* ---------------------------------------------------------------- device menu */
 .dbs-menu {

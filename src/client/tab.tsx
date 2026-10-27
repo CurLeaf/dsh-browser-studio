@@ -1976,11 +1976,6 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
               />
             ) : null}
           </div>
-          {!responsive && !picking ? (
-            <div className="dbs-sizeBadge">
-              {Math.round(size.w)}px × {Math.round(size.h)}px
-            </div>
-          ) : null}
         </div>
 
         {device.rulers && rulerBox !== null && !showStart ? (

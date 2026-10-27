@@ -3,7 +3,7 @@
 Turn the DeepSeek Harness built-in browser into a browser studio: **preview at device sizes**, **pick page elements**, and drop their context straight into the session.
 
 - The phone icon in the address bar toggles device emulation (on: last device size, off: fill); the size bar's dropdown switches models, plus device frame, mobile UA and pixel rulers with draggable guides
-- A size bar under the address bar (editable width/height + zoom) appears whenever a device size is active, and the simulated page carries a `393px × 852px` badge
+- A size bar under the address bar (editable width/height + zoom) appears whenever a device size is active; the size is also shown in the status bar
 - Element picker: hover highlight, click to select, captures selector, DOM path, text, box, styles and React component name (Desktop)
 - Pick-to-chat: the composer is summoned and focused, and the element shows up as a removable **chip** above it
 - **Nothing is written into the editor**: the element details are injected by the host as a hidden context message on the next step
