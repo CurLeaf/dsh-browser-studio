@@ -58,10 +58,6 @@ export function computeScale(
   return clamp(Number.isFinite(fit) ? fit : 1, 0.1, 1)
 }
 
-export function rotate(state: DeviceState): DeviceState {
-  return { ...state, portrait: !state.portrait, width: state.height, height: state.width }
-}
-
 export function applyPreset(state: DeviceState, preset: Preset): DeviceState {
   return {
     ...state,

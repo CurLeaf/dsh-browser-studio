@@ -92,6 +92,11 @@ function ensure(): HistoryEntry[] {
 }
 
 /** Stable snapshot for `useSyncExternalStore`. */
+/** Test-only: forget the module-level cache. */
+export function resetHistory(): void {
+  entries = null
+}
+
 export function historySnapshot(): HistoryEntry[] {
   return ensure()
 }
@@ -153,6 +158,3 @@ export function clearHistory(): void {
 }
 
 /** Test seam: drop the in-memory cache so the next snapshot re-reads storage. */
-export function resetHistory(): void {
-  entries = null
-}

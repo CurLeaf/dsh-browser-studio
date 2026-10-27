@@ -16,6 +16,7 @@ describe('vite agent plugin', () => {
       { tag: 'script', children: AGENT_LOADER, injectTo: 'head' },
     ])
     expect(AGENT_LOADER).toContain(AGENT_PATH)
+    expect(AGENT_LOADER).toContain('ancestorOrigins')
     expect(AGENT_LOADER).toContain('document.referrer')
   })
 

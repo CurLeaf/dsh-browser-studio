@@ -92,11 +92,9 @@ export function buildBlock(ref: ElementRef, index: number, meta: BlockMeta, note
 export interface PendingRef {
   id: string
   n: number
-  tag?: string
   label: string
   note?: string
   detail: string
-  createdAt: number
 }
 
 const queues = new Map<string, PendingRef[]>()
@@ -109,8 +107,8 @@ function emit(sessionId: string): void {
   for (const listener of [...set]) listener()
 }
 
-export function addPendingRef(sessionId: string, ref: Omit<PendingRef, 'id' | 'createdAt'>): PendingRef {
-  const entry: PendingRef = { ...ref, id: `ref-${++refSeq}`, createdAt: Date.now() }
+export function addPendingRef(sessionId: string, ref: Omit<PendingRef, 'id'>): PendingRef {
+  const entry: PendingRef = { ...ref, id: `ref-${++refSeq}` }
   const next = [...(queues.get(sessionId) ?? []), entry]
   queues.set(sessionId, next)
   emit(sessionId)

@@ -11,9 +11,12 @@ export const AGENT_PATH = '/browser-studio/agent.js'
 
 export const AGENT_LOADER = `(function () {
   var el = document.currentScript;
-  var ref = null;
-  try { ref = document.referrer ? new URL(document.referrer) : null; } catch (e) { ref = null; }
-  var origin = ref && ref.origin ? ref.origin : (el && el.getAttribute('data-dsh-origin')) || '';
+  var origin = '';
+  try { origin = (location.ancestorOrigins && location.ancestorOrigins[0]) || ''; } catch (e) { origin = ''; }
+  if (!origin) {
+    try { origin = document.referrer ? new URL(document.referrer).origin : ''; } catch (e) { origin = ''; }
+  }
+  if (!origin) origin = (el && el.getAttribute('data-dsh-origin')) || '';
   if (!origin) return;
   var s = document.createElement('script');
   s.src = origin + '${AGENT_PATH}';

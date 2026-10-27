@@ -58,6 +58,13 @@ export function createWebAgent(options: WebAgentOptions): WebAgent {
 
     if (data.type === 'ready') {
       if (typeof data.version === 'number' && data.version !== BRIDGE_VERSION) return
+      // The boot announcement carries no token. Complete the handshake instead
+      // of trusting it, otherwise a late-loading page would look ready while
+      // every command is rejected for a missing token.
+      if (data.token !== options.token) {
+        post({ type: 'hello', token: options.token, version: BRIDGE_VERSION })
+        return
+      }
       ready = true
       options.onReady?.()
       return

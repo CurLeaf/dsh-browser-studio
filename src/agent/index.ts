@@ -68,7 +68,7 @@ function boot(): void {
   let pins: Pin[] = []
   let highlighted: Element | null = null
   let pending: Array<Promise<void>> = []
-  let copy = { pick: '点击元素加入对话 · Esc 退出', added: '已加入对话' }
+  let copy = { added: '已加入对话' }
 
   const doc = document
   const safe = <T,>(fn: () => T, fallback: T): T => {

@@ -143,7 +143,7 @@ export function ComposerDock(props: any): React.ReactElement | null {
   )
 }
 
-export const inject = ['slots', 'sessions', 'locale']
+export const inject = ['slots', 'locale']
 
 export function apply(ctx: any): void {
   const t = ctx.locale.bind(NS)
@@ -159,21 +159,7 @@ export function apply(ctx: any): void {
   ctx.effect(() => ctx.locale.register(NS, { zh: ZH, en: EN }), 'browser-studio: dictionaries')
   ctx.effect(installStyles, 'browser-studio: styles')
 
-  const sendPrompt = async (sessionId: string, text: string): Promise<void> => {
-    const sessions = ctx.get('sessions')
-    if (sessions === undefined) throw new Error('browser-studio: sessions unavailable')
-    const conversation = sessions.scope(sessionId)?.get('conversation')
-    if (conversation !== undefined) {
-      await conversation.send(text)
-      return
-    }
-    const session = sessions.binding(sessionId)?.session
-    if (session === undefined) throw new Error('browser-studio: session is no longer open')
-    const result = await session.prompt([{ type: 'text', text }], 'queue')
-    if (result?.ok !== true) throw new Error('browser-studio: message was rejected')
-  }
-
-  const bodyInject = () => ({ t, locale: activeLocale(), sendPrompt })
+  const bodyInject = () => ({ t, locale: activeLocale() })
 
   ctx.inject(['uiConversation', 'slots'], (conversation: any) => {
     conversation.effect(

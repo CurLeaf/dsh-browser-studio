@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyPreset, computeScale, DEFAULT_DEVICE, isLandscape, normalizeUrl, rotate, viewportSize, ZOOM_STEPS,
+  applyPreset, computeScale, DEFAULT_DEVICE, isLandscape, normalizeUrl, viewportSize, ZOOM_STEPS,
 } from '../src/client/device'
 import { PRESET_BY_ID, type Preset } from '../src/client/presets'
 
@@ -40,17 +40,13 @@ describe('viewport math', () => {
     expect(computeScale(state, { w: 500, h: 900 })).toBe(1.25)
     expect(ZOOM_STEPS).toContain(1.25)
   })
-  it('rotates by swapping dimensions', () => {
-    const state = { ...DEFAULT_DEVICE, presetId: 'custom', width: 393, height: 852, portrait: true }
-    expect(rotate(state)).toMatchObject({ width: 852, height: 393, portrait: false })
-  })
   it('keeps rulers off by default', () => {
     expect(DEFAULT_DEVICE.rulers).toBe(false)
   })
   it('tells a rotated portrait preset apart from a landscape one', () => {
     const phone = PRESET_BY_ID.get('iphone-15') as Preset
     expect(isLandscape({ ...DEFAULT_DEVICE, ...applyPreset(DEFAULT_DEVICE, phone) }, phone)).toBe(false)
-    const rotated = rotate(applyPreset(DEFAULT_DEVICE, phone))
+    const rotated = { ...applyPreset(DEFAULT_DEVICE, phone), width: 852, height: 393, portrait: false }
     expect(isLandscape(rotated, phone)).toBe(true)
     expect(applyPreset(rotated, phone).portrait).toBe(true)
   })

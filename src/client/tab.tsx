@@ -39,7 +39,6 @@ export interface BodyProps {
   sessionId: string
   t: (key: string) => string
   locale: 'zh' | 'en'
-  sendPrompt: (sessionId: string, text: string) => Promise<void>
   useTabInfo: () => { tab?: { id?: string; navigation?: { params?: { url?: string } } } }
   useWorkspaces?: (selector: (snapshot: unknown) => unknown) => unknown
   /** Slot standard prop when the body slot declares the session Browser store. */
@@ -357,7 +356,7 @@ function RulerOverlay(props: RulerOverlayProps): React.ReactElement {
 }
 
 export function BrowserBody(props: BodyProps): React.ReactElement {
-  const { t, locale, sessionId, sendPrompt } = props
+  const { t, locale, sessionId } = props
   const tab = typeof props.useTabInfo === 'function' ? props.useTabInfo().tab : undefined
   const tabId = tab?.id ?? 'default'
   const useSharedStore: <T>(selector: (state: SharedBrowserState) => T) => T =
@@ -710,6 +709,22 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     resumePagePicking()
   }, [resumePagePicking])
 
+  // Escape exits picking from the studio side too (focus is often outside the frame).
+  React.useEffect(() => {
+    if (!picking) return undefined
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      if (pendingRef.current !== null) {
+        closePickPopover()
+        return
+      }
+      setPicking(false)
+      void callAgent('pick', false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [picking, closePickPopover, callAgent])
+
   const confirmPick = React.useCallback(() => {
     const ref = pendingRef.current
     if (ref === null) return
@@ -731,7 +746,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
     pinsRef.current = [...pinsRef.current, { n, selector: ref.selector }]
     syncPins()
     closePickPopover()
-  }, [closePickPopover, sendPrompt, sessionId, showToast, syncPins, t])
+  }, [closePickPopover, sessionId, showToast, syncPins, t])
 
   // Keep the popover anchored to the picked element while the page scrolls.
   React.useEffect(() => {
@@ -811,7 +826,7 @@ export function BrowserBody(props: BodyProps): React.ReactElement {
         () => {
           if (cancelled || element === null) return
           readyRef.current = true
-          const copy = { pick: t('hint.pick'), added: t('hint.added') }
+          const copy = { added: t('hint.added') }
           element.executeJavaScript(callCode('copy', copy), false).catch(() => {})
           if (pickingRef.current) element.executeJavaScript(callCode('pick', true), false).catch(() => {})
           syncPins()

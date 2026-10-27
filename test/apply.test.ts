@@ -51,7 +51,7 @@ describe('apply wiring', () => {
   })
 
   it('declares the client services it needs', () => {
-    expect(inject).toEqual(['slots', 'sessions', 'locale'])
+    expect(inject).toEqual(['slots', 'locale'])
   })
 
   it('takes over the browser kind on Desktop', () => {

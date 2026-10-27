@@ -39,13 +39,6 @@ export interface Preset {
   insets?: Insets
 }
 
-export const GROUP_LABEL: Record<PresetGroup, { zh: string; en: string }> = {
-  phone: { zh: '手机', en: 'Phone' },
-  tablet: { zh: '平板', en: 'Tablet' },
-  laptop: { zh: '笔记本', en: 'Laptop' },
-  desktop: { zh: '桌面', en: 'Desktop' },
-}
-
 export const PRESETS: Preset[] = [
   {
     "id": "iphone-se",

@@ -59,7 +59,7 @@ const loaded = await page.evaluate(() => ({
   inject: window.__PLUGIN__?.inject,
 }))
 if (!loaded.hasApply) throw new Error(`bundle did not export apply: ${JSON.stringify(loaded)}`)
-if (JSON.stringify(loaded.inject) !== JSON.stringify(['slots', 'sessions', 'locale'])) {
+if (JSON.stringify(loaded.inject) !== JSON.stringify(['slots', 'locale'])) {
   throw new Error(`unexpected inject list: ${JSON.stringify(loaded.inject)}`)
 }
 
