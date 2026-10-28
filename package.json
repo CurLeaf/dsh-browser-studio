@@ -53,7 +53,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/curleaf/dsh-browser-studio.git"
+    "url": "git+https://github.com/CurLeaf/dsh-browser-studio.git"
   },
   "keywords": [
     "dsh",
@@ -77,5 +77,13 @@
     "react-dom": "~18.3.1",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
+  },
+  "author": "curleaf",
+  "homepage": "https://github.com/CurLeaf/dsh-browser-studio#readme",
+  "bugs": {
+    "url": "https://github.com/CurLeaf/dsh-browser-studio/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
